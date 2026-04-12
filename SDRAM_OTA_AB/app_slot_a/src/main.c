@@ -71,9 +71,9 @@ int main(void)
     while (1) {
         LED_On();
         UART1_SendString("[APP-A-SDRAM] heartbeat\r\n");
-        delay_loop(3000000);
+        delay_loop(30000000);
 
         LED_Off();
-        delay_loop(3000000);
+        delay_loop(30000000);
     }
 }

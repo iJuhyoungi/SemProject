@@ -19,6 +19,11 @@ SECTIONS
         KEEP(*(.isr_vector))
     } > FLASH
 
+    .flash_config :
+    {
+        KEEP(*(.flash_config))
+    } > FLASH
+
     .boot_text :
     {
         . = ALIGN(4);

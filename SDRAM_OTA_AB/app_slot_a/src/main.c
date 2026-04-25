@@ -5,6 +5,11 @@
 // #include "boot_policy.h"
 // #include "bootctrl_flash.h"
 
+extern volatile uint32_t g_bootctrl_dbg;
+extern volatile uint32_t g_bootctrl_dbg_status;
+extern volatile uint32_t g_bootctrl_dbg_sts0_before;
+extern volatile uint32_t g_bootctrl_dbg_arbidle_wait;
+
 static void delay_loop(uint32_t count)
 {
     for (volatile uint32_t i = 0; i < count; i++) {
@@ -64,6 +69,22 @@ int main(void)
         UART1_SendString("[APP-A-SDRAM] Phase B confirm write SUCCESS (unexpected at this stage)\r\n");
     } else {
         UART1_SendString("[APP-A-SDRAM] Phase B confirm write FAILED (expected before real flash driver)\r\n");
+
+        UART1_SendString("[APP-A-SDRAM] dbg = 0x");
+        UART1_SendHex32(g_bootctrl_dbg);
+        UART1_SendString("\r\n");
+
+        UART1_SendString("[APP-A-SDRAM] dbg_status = 0x");
+        UART1_SendHex32(g_bootctrl_dbg_status);
+        UART1_SendString("\r\n");
+
+        UART1_SendString("[APP-A-SDRAM] dbg_sts0_before = 0x");
+        UART1_SendHex32(g_bootctrl_dbg_sts0_before);
+        UART1_SendString("\r\n");
+
+        UART1_SendString("[APP-A-SDRAM] dbg_arbidle_wait = 0x");
+        UART1_SendHex32(g_bootctrl_dbg_arbidle_wait);
+        UART1_SendString("\r\n");
     }
 
     UART1_SendString("[APP-A-SDRAM] relocation done, heartbeat start\r\n");

@@ -28,6 +28,11 @@ typedef int32_t status_t;
 static flexspi_nor_config_t g_bootctrl_flash_cfg_ram;
 static int s_cfg_copied = 0;
 
+volatile uint32_t g_bootctrl_dbg = 0;
+volatile uint32_t g_bootctrl_dbg_status = 0;
+volatile uint32_t g_bootctrl_dbg_sts0_before=0;     /* erase 직전 STS0 스냅샷 */
+volatile uint32_t g_bootctrl_dbg_arbidle_wait=0;    /* erase 직전 ARBIDLE 대기 횟수 */
+
 typedef struct _flexspi_nor_driver_interface
 {
     uint32_t version;
@@ -56,6 +61,13 @@ typedef struct _bootloader_api_entry
 #define BOOTCTRL_FLEXSPI_INST   (0u)
 #define BOOTCTRL_SECTOR_SIZE    (4096u)
 #define BOOTCTRL_PAGE_SIZE      (256u)
+#define BOOTCTRL_FLEXSPI_AMBA_BASE      (0x60000000u)   /* FlexSPI가 바라보는 NOR flash의 주소 공간 시작점 */
+
+  /* FlexSPI 컨트롤러 STS0 레지스터 (RM p.1503, 27.8.2.24) */                                                                                                                              
+  /* base = 0x402A_8000, offset = 0xE0  → 0x402A_80E0 */ 
+#define BOOTCTRL_FLEXSPI_STS0   (*(volatile uint32_t *)0x402A80E0U)
+#define BOOTCTRL_STS0_ARBIDLE   (1u << 1)       /* bit[1] = ARBIDLE; 1이면 컨트롤러 idle */
+#define BOOTCTRL_STS0_SEQIDLE   (1u << 0)       /* bit[0] = SEQIDLE; 1이면 sequence engine idle */
 
 /* ---------- small helpers ---------- */
 
@@ -103,29 +115,37 @@ static int BootCtrl_RomInitIfNeeded(void)
     static int s_inited = 0;
 
     if (s_inited) {
+        g_bootctrl_dbg = 0x1001;
         return 1;
     }
 
     bootloader_api_entry_t *api = BOOTCTRL_ROM_API_TREE;
     if (!api) {
+        g_bootctrl_dbg = 0xE101;
         return 0;
     }
 
     if (!api->flexSpiNorDriver) {
+        g_bootctrl_dbg = 0xE102;
         return 0;
     }
 
     if (!api->flexSpiNorDriver->init) {
+        g_bootctrl_dbg = 0xE103;
         return 0;
     }
 
     BootCtrl_CopyConfigToRam();
+    g_bootctrl_dbg = 0x1002;
 
     status_t st = api->flexSpiNorDriver->init(
         BOOTCTRL_FLEXSPI_INST,
         &g_bootctrl_flash_cfg_ram);
 
+    g_bootctrl_dbg_status = (uint32_t)st;
+
     if (st != kStatus_Success) {
+        g_bootctrl_dbg = 0xE104;
         return 0;
     }
 
@@ -134,9 +154,9 @@ static int BootCtrl_RomInitIfNeeded(void)
     }
 
     s_inited = 1;
+    g_bootctrl_dbg = 0x1003;
     return 1;
 }
-
 /* ---------- required low-level API for bootctrl_runtime_flash.c ---------- */
 
 int BootCtrl_LowLevel_Read(uint32_t address, void *dst, uint32_t size)
@@ -151,27 +171,73 @@ int BootCtrl_LowLevel_Read(uint32_t address, void *dst, uint32_t size)
 
 int BootCtrl_LowLevel_EraseSector(uint32_t address)
 {
-    if ((address % BOOTCTRL_SECTOR_SIZE) != 0u) {
+    if (address < BOOTCTRL_FLEXSPI_AMBA_BASE) {
+        g_bootctrl_dbg = 0xE207;
         return 0;
     }
 
+    if ((address % BOOTCTRL_SECTOR_SIZE) != 0u) {
+        g_bootctrl_dbg = 0xE201;
+        return 0;
+    }
+
+    g_bootctrl_dbg = 0x2001;
+
     if (!BootCtrl_RomInitIfNeeded()) {
+        g_bootctrl_dbg = 0xE202;
         return 0;
     }
 
     bootloader_api_entry_t *api = BOOTCTRL_ROM_API_TREE;
-    if (!api || !api->flexSpiNorDriver || !api->flexSpiNorDriver->erase) {
+    if (!api) {
+        g_bootctrl_dbg = 0xE203;
         return 0;
     }
+
+    if (!api->flexSpiNorDriver) {
+        g_bootctrl_dbg = 0xE204;
+        return 0;
+    }
+
+    if (!api->flexSpiNorDriver->erase) {
+        g_bootctrl_dbg = 0xE205;
+        return 0;
+    }
+
+    g_bootctrl_dbg = 0x2002;
 
     uint32_t primask = BootCtrl_SaveAndDisableIRQ();
     BootCtrl_DsbIsb();
 
+    /*erase 직전 컨트롤러 상태 스냅샷*/
+    g_bootctrl_dbg_sts0_before = BOOTCTRL_FLEXSPI_STS0;
+
+    /*보험으로 AHB RX buffer 한번 더 비우기*/
+    if (api->flexSpiNorDriver->clear_cache) {
+        api->flexSpiNorDriver->clear_cache(BOOTCTRL_FLEXSPI_INST);
+    }
+    BootCtrl_DsbIsb();
+
+    /*ARBIDLE이 1이 될 때까지 대기*/
+    uint32_t wait = 0;
+    while (!(BOOTCTRL_FLEXSPI_STS0 & BOOTCTRL_STS0_ARBIDLE)) {
+        wait++;
+        if(wait>1000000u) {
+            break;
+        }
+        g_bootctrl_dbg_arbidle_wait = wait;
+    }
+
+
+    uint32_t flash_offset=address-BOOTCTRL_FLEXSPI_AMBA_BASE;
+    
     status_t st = api->flexSpiNorDriver->erase(
         BOOTCTRL_FLEXSPI_INST,
         &g_bootctrl_flash_cfg_ram,
-        address,
+        flash_offset,
         BOOTCTRL_SECTOR_SIZE);
+
+    g_bootctrl_dbg_status = (uint32_t)st;
 
     if (api->flexSpiNorDriver->clear_cache) {
         api->flexSpiNorDriver->clear_cache(BOOTCTRL_FLEXSPI_INST);
@@ -180,7 +246,13 @@ int BootCtrl_LowLevel_EraseSector(uint32_t address)
     BootCtrl_DsbIsb();
     BootCtrl_RestoreIRQ(primask);
 
-    return (st == kStatus_Success) ? 1 : 0;
+    if (st != kStatus_Success) {
+        g_bootctrl_dbg = 0xE206;
+        return 0;
+    }
+
+    g_bootctrl_dbg = 0x2003;
+    return 1;
 }
 
 int BootCtrl_LowLevel_ProgramPage(uint32_t address, const void *src, uint32_t size)
@@ -217,10 +289,11 @@ int BootCtrl_LowLevel_ProgramPage(uint32_t address, const void *src, uint32_t si
     uint32_t primask = BootCtrl_SaveAndDisableIRQ();
     BootCtrl_DsbIsb();
 
+    uint32_t flash_offset=address-BOOTCTRL_FLEXSPI_AMBA_BASE;
     status_t st = api->flexSpiNorDriver->program(
         BOOTCTRL_FLEXSPI_INST,
         &g_bootctrl_flash_cfg_ram,
-        address,
+        flash_offset,
         (const uint32_t *)s_page_buf);
 
     if (api->flexSpiNorDriver->clear_cache) {

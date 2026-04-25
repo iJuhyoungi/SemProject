@@ -53,3 +53,10 @@ dkms.conf
 
 # debug information files
 *.dwo
+
+build/
+
+*.log
+tools
+SDRAM_OTA_AB/docs/*.txt
+SDRAM_OTA_AB/make_project_code.sh

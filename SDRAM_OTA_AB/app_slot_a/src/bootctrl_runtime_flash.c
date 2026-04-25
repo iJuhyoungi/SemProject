@@ -209,20 +209,27 @@ int BootCtrl_RuntimeConfirm_SlotA_Write(void)
     if (!BootCtrl_PrepareSectorShadow()) {
         return 0;
     }
+    UART1_SendString("[APP-A-SDRAM] write: shadow prepared?\r\n");
 
+    UART1_SendString("[APP-A-SDRAM] write: before erase\r\n");
     if (!BootCtrl_FlashErase_Sector(BOOTCTRL_FLASH_BASE_ADDR)) {
         return 0;
     }
+    UART1_SendString("[APP-A-SDRAM] write: after erase\r\n");
 
+    UART1_SendString("[APP-A-SDRAM] write: before program\r\n");
     if (!BootCtrl_FlashProgram_Buffer(BOOTCTRL_FLASH_BASE_ADDR,
                                       g_bootctrl_sector_shadow,
                                       BOOTCTRL_FLASH_SECTOR_SIZE)) {
         return 0;
     }
+    UART1_SendString("[APP-A-SDRAM] write: after program\r\n");
 
+    UART1_SendString("[APP-A-SDRAM] write: before verify\r\n");
     if (!BootCtrl_Verify(&g_bootctrl_confirm_image, sizeof(g_bootctrl_confirm_image))) {
         return 0;
     }
+    UART1_SendString("[APP-A-SDRAM] write: after verify\r\n");
 
     return 1;
 }

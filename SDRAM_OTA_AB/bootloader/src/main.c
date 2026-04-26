@@ -2,6 +2,7 @@
 #include "uart.h"
 #include "led.h"
 #include "boot_policy.h"
+#include "bootctrl_runtime_boot.h"
 // #include "bootctrl_flash.h"
 
 #define SCB_VTOR   (*(volatile uint32_t *)0xE000ED08)
@@ -57,10 +58,14 @@ int main(void)
     uint32_t slot = Boot_SelectSlot(ctrl);
     uint32_t base = Boot_GetSlotBase(slot);
 
-    // /* 추가 */
-    // if (Boot_IsPendingTrial(ctrl) && ctrl->pending_slot == slot) {
-    //     BootCtrl_MarkTrialAttempt(slot);
-    // }
+    if (Boot_IsPendingTrial(ctrl) && ctrl->pending_slot == slot) {
+        UART1_SendString("[BOOT] Marking trial attempt for selected slot...\r\n");
+        if(BootCtrl_MarkTrialAttempt(ctrl)) {
+            UART1_SendString("[BOOT] attemps incremented OK\r\n");
+        } else {
+            UART1_SendString("[BOOT] attempts increment failed\r\n");
+        }
+    }
 
     if (Boot_IsPendingTrial(ctrl)) {
         UART1_SendString("[BOOT] Pending trial detected\r\n");

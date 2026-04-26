@@ -5,6 +5,7 @@ MEMORY
     FLASH_CONFIG (rx) : ORIGIN = 0x60000000, LENGTH = 0x00001000
     BOOT_HDR     (rx) : ORIGIN = 0x60001000, LENGTH = 0x00001000
     FLASH        (rx) : ORIGIN = 0x60002000, LENGTH = 0x0003E000
+    ITCM         (rwx): ORIGIN = 0x00000000, LENGTH = 0x00010000
     DTCM         (rwx): ORIGIN = 0x20000000, LENGTH = 0x00010000
 
 }
@@ -17,7 +18,7 @@ SECTIONS
     .boot_header : { KEEP(*(.ivt)) KEEP(*(.boot_data)) KEEP(*(.dcd_data)) } > BOOT_HDR
     .isr_vector : { KEEP(*(.isr_vector)) } > FLASH
 
-    /* 🚀 부트로더는 코드가 작으므로 SDRAM으로 옮기지 않고 플래시에서 직접 실행(XIP)합니다! */
+    /*  부트로더는 코드가 작으므로 SDRAM으로 옮기지 않고 플래시에서 직접 실행(XIP)합니다! */
     .text :
     {
         . = ALIGN(4);
@@ -26,6 +27,17 @@ SECTIONS
         *(.rodata*)
         . = ALIGN(4);
     } > FLASH
+
+    /* : ROM API 호출 코드를 ITCM 으로 옮겨 flash erase/program 중 안전 보장 */
+    .ramfunc :
+    {
+        . = ALIGN(4);
+        __ramfunc_start__ = .;
+        *(.ramfunc*)
+        . = ALIGN(4);
+        __ramfunc_end__ = .;
+    } > ITCM AT > FLASH
+    __ramfunc_load_start__ = LOADADDR(.ramfunc);
 
     /* 변수들은 코어 내부 램(DTCM)을 사용합니다 */
     .data :

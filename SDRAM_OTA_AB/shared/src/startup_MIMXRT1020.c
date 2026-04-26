@@ -1,6 +1,6 @@
 #include <stdint.h>
 #include "system_MIMXRT1020.h"
-/* 🚀 헤더 파일 추가하여 경고 해결 */
+/* 헤더 파일 추가하여 경고 해결 */
 #include "uart.h"
 #include "clock.h"
 #include "semc.h"
@@ -87,6 +87,15 @@ __attribute__((section(".boot_text"))) void Reset_Handler(void)
     src = (volatile uint32_t *)&__data_load_start__;
     dst = (volatile uint32_t *)&__data_start__;
     while (dst < (volatile uint32_t *)&__data_end__) { *dst++ = *src++; }
+
+    /* ramfunc를 FLASH에서 ITCM으로 복사
+     * (BootCtrl_LowLevel_* 등 flash erase 중에서도 fetch가 가능해야 하는 함수들)*/
+    src = (volatile uint32_t * )&__ramfunc_load_start__;
+    dst = (volatile uint32_t *)&__ramfunc_start__;
+
+    while (dst < (volatile uint32_t *)&__ramfunc_end__) {
+        *dst++ = *src++;
+    }
 
     for (dst = (volatile uint32_t *)&__bss_start__;
          dst < (volatile uint32_t *)&__bss_end__;) {

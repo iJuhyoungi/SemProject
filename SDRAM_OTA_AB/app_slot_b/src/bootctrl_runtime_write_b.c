@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include "uart.h"
 #include "bootctrl_runtime_b.h"
 
 static void BootCtrl_MemSet(void *dst, uint8_t value, uint32_t size)

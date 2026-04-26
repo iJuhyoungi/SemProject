@@ -57,7 +57,7 @@ int main(void)
 
     UART1_SendString("[APP-A-SDRAM] Phase B precheck start\r\n");
 
-    if (BootCtrl_RuntimeConfirm_SlotA_Precheck()) {
+    if (BootCtrl_BootloaderWrite_Precheck()) {
         UART1_SendString("[APP-A-SDRAM] Phase B precheck OK\r\n");
     } else {
         UART1_SendString("[APP-A-SDRAM] Phase B precheck FAILED\r\n");

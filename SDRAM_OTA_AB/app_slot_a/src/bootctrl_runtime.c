@@ -12,15 +12,15 @@ int BootCtrl_Runtime_Read(boot_ctrl_t *out)
 }
 
 /* 실제 구현은 bootctrl_runtime_flash.c */
-int BootCtrl_RuntimeConfirm_SlotA_Precheck(void);
-int BootCtrl_RuntimeConfirm_SlotA_Write(void);
+int BootCtrl_BootloaderWrite_Precheck(void);
+int BootCtrl_BootloaderWrite_Internal(void);
 
 int BootCtrl_RuntimeConfirm_SlotA(void)
 {
-    if (!BootCtrl_RuntimeConfirm_SlotA_Precheck()) {
+    if (!BootCtrl_BootloaderWrite_Precheck()) {
         return 0;
     }
 
-    return BootCtrl_RuntimeConfirm_SlotA_Write();
+    return BootCtrl_BootloaderWrite_Internal();
 }
 

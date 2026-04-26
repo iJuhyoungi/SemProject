@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include "uart.h"
 #include "bootctrl_runtime.h"
 
 
@@ -78,7 +79,7 @@ extern int BootCtrl_LowLevel_EraseSector(uint32_t address);
 extern int BootCtrl_LowLevel_ProgramPage(uint32_t address, const void *src, uint32_t size);
 #endif
 
-static int BootCtrl_RuntimeBuildConfirmImage_SlotA(boot_ctrl_t *out)
+static int BootCtrl_BuildAttemptIncrementImage(boot_ctrl_t *out)
 {
     if (!out) {
         return 0;
@@ -93,7 +94,7 @@ static int BootCtrl_RuntimeBuildConfirmImage_SlotA(boot_ctrl_t *out)
     return 1;
 }
 
-int BootCtrl_RuntimeConfirm_SlotA_Precheck(void)
+int BootCtrl_BootloaderWrite_Precheck(void)
 {
     boot_ctrl_t current;
 
@@ -105,7 +106,7 @@ int BootCtrl_RuntimeConfirm_SlotA_Precheck(void)
         return 0;
     }
 
-    if (!BootCtrl_RuntimeBuildConfirmImage_SlotA(&g_bootctrl_confirm_image)) {
+    if (!BootCtrl_BuildAttemptIncrementImage(&g_bootctrl_confirm_image)) {
         return 0;
     }
 
@@ -204,7 +205,7 @@ static int BootCtrl_FlashProgram_Buffer(uint32_t address, const uint8_t *src, ui
 
 #endif
 
-int BootCtrl_RuntimeConfirm_SlotA_Write(void)
+int BootCtrl_BootloaderWrite_Internal(void)
 {
     if (!BootCtrl_PrepareSectorShadow()) {
         return 0;

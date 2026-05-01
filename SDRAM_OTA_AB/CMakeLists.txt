@@ -16,6 +16,7 @@ include_directories(bootloader/include)
 include_directories(app_slot_a/include)
 
 add_subdirectory(bootloader)
+add_subdirectory(bootloader_stage1)
 add_subdirectory(app_slot_a)
 add_subdirectory(app_slot_b)
 add_subdirectory(bootctrl)

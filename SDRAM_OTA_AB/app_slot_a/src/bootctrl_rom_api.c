@@ -5,19 +5,21 @@
 /*
  * app_slot_a 전용 low-level flash backend
  *
- * - shared/ 미수정
- * - bootloader/ 미수정
- * - app_slot_b/ 미수정
+ * 모든 함수를 .ramfunc → ITCM 에서 실행.
+ * slot 앱은 SDRAM 에서 실행되므로 strict 요건은 아니나,
+ * bootloader 와 동일 모델로 일관성 + 방어적 안전 확보.
  *
  * 전제:
  * - shared/src/flexspi_nor_config.c 에 qspi_flash_config 심볼이 이미 존재함
- * - ENABLE_BOOTCTRL_FLASH_WRITE == 1 일 때만 상위 write 경로가 이 파일을 호출함
+ * - app_slot_a/linker/app_slot_a.ld 에 .ramfunc → ITCM 매핑
+ * - shared/src/startup_MIMXRT1020.c 의 else 분기가 .ramfunc 를 FLASH→ITCM 복사
  */
 
 /* ---------- ROM API type declarations ---------- */
 
 typedef int32_t status_t;
 #define kStatus_Success 0
+#define BOOTCTRL_RAMFUNC __attribute__((section(".ramfunc")))
 
 
 // typedef struct _flexspi_nor_config_ flexspi_nor_config_t;
@@ -73,6 +75,7 @@ typedef struct _bootloader_api_entry
 
 static void BootCtrl_CopyConfigToRam(void);
 
+BOOTCTRL_RAMFUNC
 static void BootCtrl_MemCpy8(void *dst, const void *src, uint32_t size)
 {
     volatile uint8_t *d = (volatile uint8_t *)dst;
@@ -83,6 +86,7 @@ static void BootCtrl_MemCpy8(void *dst, const void *src, uint32_t size)
     }
 }
 
+BOOTCTRL_RAMFUNC
 static uint32_t BootCtrl_SaveAndDisableIRQ(void)
 {
     uint32_t primask;
@@ -95,6 +99,7 @@ static uint32_t BootCtrl_SaveAndDisableIRQ(void)
     return primask;
 }
 
+BOOTCTRL_RAMFUNC
 static void BootCtrl_RestoreIRQ(uint32_t primask)
 {
     __asm volatile(
@@ -104,12 +109,14 @@ static void BootCtrl_RestoreIRQ(uint32_t primask)
         : "memory");
 }
 
+BOOTCTRL_RAMFUNC
 static void BootCtrl_DsbIsb(void)
 {
     __asm volatile("dsb 0xF" ::: "memory");
     __asm volatile("isb 0xF" ::: "memory");
 }
 
+BOOTCTRL_RAMFUNC
 static int BootCtrl_RomInitIfNeeded(void)
 {
     static int s_inited = 0;
@@ -157,8 +164,9 @@ static int BootCtrl_RomInitIfNeeded(void)
     g_bootctrl_dbg = 0x1003;
     return 1;
 }
-/* ---------- required low-level API for bootctrl_runtime_flash.c ---------- */
 
+/* ---------- required low-level API for bootctrl_runtime_flash.c ---------- */
+BOOTCTRL_RAMFUNC
 int BootCtrl_LowLevel_Read(uint32_t address, void *dst, uint32_t size)
 {
     if (!dst) {
@@ -169,6 +177,7 @@ int BootCtrl_LowLevel_Read(uint32_t address, void *dst, uint32_t size)
     return 1;
 }
 
+BOOTCTRL_RAMFUNC
 int BootCtrl_LowLevel_EraseSector(uint32_t address)
 {
     if (address < BOOTCTRL_FLEXSPI_AMBA_BASE) {
@@ -255,6 +264,7 @@ int BootCtrl_LowLevel_EraseSector(uint32_t address)
     return 1;
 }
 
+BOOTCTRL_RAMFUNC
 int BootCtrl_LowLevel_ProgramPage(uint32_t address, const void *src, uint32_t size)
 {
     static uint8_t s_page_buf[BOOTCTRL_PAGE_SIZE];
@@ -306,6 +316,7 @@ int BootCtrl_LowLevel_ProgramPage(uint32_t address, const void *src, uint32_t si
     return (st == kStatus_Success) ? 1 : 0;
 }
 
+BOOTCTRL_RAMFUNC
 static void BootCtrl_CopyConfigToRam(void)
 {
     if (s_cfg_copied) {

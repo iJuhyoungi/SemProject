@@ -10,7 +10,10 @@
 #   apps       = a + b
 
 TARGET="${1:-all}"
-DEV="-t mimxrt1021dag5a"
+# pyOCD builtin target. pack target (mimxrt1021dag5a) 은 0.43.1 의
+# NXP CMSIS Pack debug sequence 에 unaligned read AssertionError 가 있어
+# erase/flash/halt 가 fail. builtin 은 우회 가능.
+DEV="-t mimxrt1020"
 
 erase_chip() {
     echo "========================================"
@@ -22,9 +25,11 @@ erase_chip() {
 
 flash_bootloader() {
     echo "========================================"
-    echo " Flashing BOOTLOADER ELF"
+    echo " Flashing BOOTLOADER (0x60000000)"
     echo "========================================"
-    pyocd flash build/bootloader/bootloader.elf $DEV
+    # bin + base-address 패턴. elf 로 굽으면 .flash_config (FCB) 섹션이
+    # 누락되어 boot ROM 이 FCB 매직 검증 fail → 보드 stuck.
+    pyocd flash build/bootloader/bootloader.bin $DEV --base-address 0x60000000
     echo ""
 }
 

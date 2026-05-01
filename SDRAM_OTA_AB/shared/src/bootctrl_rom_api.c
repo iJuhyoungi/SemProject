@@ -1,18 +1,24 @@
 #include <stdint.h>
-#include "bootctrl_runtime.h"
 #include "flexspi_nor_config.h"
 
 /*
- * app_slot_a 전용 low-level flash backend
+ * 공통 ROM API wrapper (bootloader / app_slot_a / app_slot_b 공유)
  *
- * 모든 함수를 .ramfunc → ITCM 에서 실행.
- * slot 앱은 SDRAM 에서 실행되므로 strict 요건은 아니나,
- * bootloader 와 동일 모델로 일관성 + 방어적 안전 확보.
+ * BootCtrl_LowLevel_{Read,EraseSector,ProgramPage} 가 ROM API 의
+ * FlexSPI NOR driver 를 호출. 모든 함수가 .ramfunc 에 배치되어 ITCM 에서
+ * 실행됨 — flash erase/program 중 instruction fetch 가 FlexSPI 와 충돌하지
+ * 않도록.
+ *
+ * - bootloader: XIP FLASH 실행이라 strict 요건 (fetch 충돌 방지 필수)
+ * - slot A/B: SDRAM-reloc 후 실행이라 strict 는 아니지만 동일 모델로 일관성
  *
  * 전제:
- * - shared/src/flexspi_nor_config.c 에 qspi_flash_config 심볼이 이미 존재함
- * - app_slot_a/linker/app_slot_a.ld 에 .ramfunc → ITCM 매핑
- * - shared/src/startup_MIMXRT1020.c 의 else 분기가 .ramfunc 를 FLASH→ITCM 복사
+ * - shared/src/flexspi_nor_config.c 에 qspi_flash_config 심볼 존재
+ * - 각 컴포넌트의 linker 에 .ramfunc → ITCM 매핑 정의
+ * - 각 컴포넌트의 startup 이 .ramfunc 를 FLASH(LMA) → ITCM(VMA) 복사
+ *
+ * Caller 는 BootCtrl_LowLevel_* 의 prototype 을 자체 extern 선언으로 가짐
+ * (bootctrl_runtime_write*.c 들 참고).
  */
 
 /* ---------- ROM API type declarations ---------- */

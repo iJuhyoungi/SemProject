@@ -1,13 +1,14 @@
 #!/bin/bash
 
 # Usage: ./flash_mcu.sh [target]
-#   (no arg)   = all (default, backward compatible)
-#   all        = chip erase + flash 4 images
-#   stage1     = bootloader_stage1 만 (immutable, 거의 변경 안 됨)
-#   metadata   = boot_ctrl 만 (Slot trial 시나리오 재진입용)
-#   boot       = bootloader 만
-#   a          = app_slot_a 만
-#   b          = app_slot_b 만
+#   (no arg)   = all (default)                                                                                                                                                           
+#   all        = chip erase + flash 6 images (stage1 + bootloader + recovery + metadata + a + b)                                                                                         
+#   stage1     = bootloader_stage1 만                                                                                                                                                    
+#   boot       = stage 2 bootloader 만                                                                                                                                                   
+#   recovery   = recovery slot 만                                    ← NEW                                                                                                               
+#   metadata   = boot_ctrl 만                                                                                                                                                            
+#   a          = app_slot_a 만                                                                                                                                                           
+#   b          = app_slot_b 만                                                                                                                                                           
 #   apps       = a + b
 
 TARGET="${1:-all}"
@@ -22,6 +23,16 @@ erase_chip() {
     echo "========================================"
     pyocd erase $DEV --chip
     echo ""
+}
+
+flash_recovery() {                                                                                                                                                                       
+    echo "========================================"       
+    echo " Flashing RECOVERY (0x603E0000)"
+    echo "========================================"                                                                                                                                      
+    # Recovery slot. Stage 1 이 Stage 2 검증 실패 시 점프하는 fallback target.
+    # 64KB 영역. 현재 passive (UART 알림 + LED 깜빡), Phase 4 Step 4 에서 active 로 확장 예정.                                                                                           
+    pyocd flash build/bootloader/recovery/bootloader_recovery.bin $DEV --base-address 0x603E0000                                                                                         
+    echo ""                                                                                                                                                                              
 }
 
 flash_stage1() {
@@ -72,9 +83,13 @@ case "$TARGET" in
         erase_chip
         flash_stage1
         flash_bootloader
+        flash_recovery
         flash_metadata
         flash_a
         flash_b
+        ;;
+    recovery)
+        flash_recovery
         ;;
     stage1)
         flash_stage1
@@ -82,7 +97,7 @@ case "$TARGET" in
     metadata)
         flash_metadata
         ;;
-    boot|bootloader)
+    boot|bootloader|stage2)
         flash_bootloader
         ;;
     a|slot_a)
@@ -96,7 +111,7 @@ case "$TARGET" in
         flash_b
         ;;
     *)
-        echo "usage: $0 [all|stage1|metadata|boot|a|b|apps]   (default: all)"
+        echo "usage: $0 [all|stage1|recovery|metadata|boot|a|b|apps]   (default: all)"
         exit 1
         ;;
 esac

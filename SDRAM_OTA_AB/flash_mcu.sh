@@ -29,7 +29,7 @@ flash_stage1() {
     echo " Flashing Stage 1 (0x60000000)"
     echo "========================================"
     # Stage 1 immutabgle. FCB + IVT + 작은 jump 코드. 0x60000000 부터 8KB 차지
-    pyocd flash build/bootloader_stage1/bootloader_stage1.bin $DEV --base-address 0x60000000
+    pyocd flash build/bootloader/stage1/bootloader_stage1.bin $DEV --base-address 0x60000000
     echo ""
 }
 
@@ -39,7 +39,7 @@ flash_bootloader() {
     echo "========================================"
     # bootloader는 Stage 2가 되어 0x60004000 부터 시작. Stage 1에서 jump 하도록 되어 있음.
     # FCB/IVT 는 Stage1에서 담당하므로 bootloader는 순수 실행 코드만 포함. 0x60004000 부터 120KB 차지
-    pyocd flash build/bootloader/bootloader.bin $DEV --base-address 0x60004000
+    pyocd flash build/bootloader/stage2/bootloader_stage2.bin $DEV --base-address 0x60004000
     echo ""
 }
 

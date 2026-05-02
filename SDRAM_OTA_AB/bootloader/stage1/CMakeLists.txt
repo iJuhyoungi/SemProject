@@ -1,7 +1,7 @@
 set(TARGET bootloader_stage1)
 
 # 공통 소스(shared)와 stage1 전용 소스(src)
-file(GLOB SOURCES "src/*.c" "../shared/src/*.c")
+file(GLOB SOURCES "src/*.c" "../../shared/src/*.c")
 
 add_executable(${TARGET}.elf ${SOURCES})
 

@@ -4,7 +4,7 @@ ENTRY(Reset_Handler)
  * Stage 1 immutable bootloader linker script.
  *
  * Phase 1 의 stand-alone 빌드용 — 아직 IVT 가 Stage 1 을 가리키지 않음.
- * Phase 2 에서 IVT entry 를 Stage 1 reset handler 로 변경하면서 활성화.
+ * 
  *
  * 메모리 맵 (B-3 분리 후):
  *   0x60000000 ~ 0x60001000  FCB        (현재 bootloader/ 가 정의)
@@ -15,16 +15,21 @@ ENTRY(Reset_Handler)
 
 MEMORY
 {
-    FLASH        (rx) : ORIGIN = 0x60002000, LENGTH = 0x00002000
-    ITCM         (rwx): ORIGIN = 0x00000000, LENGTH = 0x00010000
-    DTCM         (rwx): ORIGIN = 0x20000000, LENGTH = 0x00010000
+    FLASH_CONFIG    (rx) : ORIGIN = 0x60000000, LENGTH = 0x00001000
+    BOOT_HDR        (rx) : ORIGIN = 0x60001000, LENGTH = 0x00001000
+    FLASH           (rx) : ORIGIN = 0x60002000, LENGTH = 0x00002000
+    ITCM            (rwx): ORIGIN = 0x00000000, LENGTH = 0x00010000
+    DTCM            (rwx): ORIGIN = 0x20000000, LENGTH = 0x00010000
 }
 
 __STACK_SIZE = 0x00000800;   /* 2KB stack — Stage 1 동작 매우 단순 */
 
 SECTIONS
 {
-    .isr_vector : { KEEP(*(.isr_vector)) } > FLASH
+    .flash_config   : { KEEP(*(.flash_config)) } > FLASH_CONFIG
+    .boot_header    : { KEEP(*(.ivt)) KEEP(*(.boot_data)) KEEP(*(.dcd_data)) } > BOOT_HDR
+
+    .isr_vector     : { KEEP(*(.isr_vector)) } > FLASH
 
     .text :
     {

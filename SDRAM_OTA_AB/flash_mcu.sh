@@ -3,6 +3,7 @@
 # Usage: ./flash_mcu.sh [target]
 #   (no arg)   = all (default, backward compatible)
 #   all        = chip erase + flash 4 images
+#   stage1     = bootloader_stage1 만 (immutable, 거의 변경 안 됨)
 #   metadata   = boot_ctrl 만 (Slot trial 시나리오 재진입용)
 #   boot       = bootloader 만
 #   a          = app_slot_a 만
@@ -23,13 +24,22 @@ erase_chip() {
     echo ""
 }
 
+flash_stage1() {
+    echo "========================================"
+    echo " Flashing Stage 1 (0x60000000)"
+    echo "========================================"
+    # Stage 1 immutabgle. FCB + IVT + 작은 jump 코드. 0x60000000 부터 8KB 차지
+    pyocd flash build/bootloader_stage1/bootloader_stage1.bin $DEV --base-address 0x60000000
+    echo ""
+}
+
 flash_bootloader() {
     echo "========================================"
-    echo " Flashing BOOTLOADER (0x60000000)"
+    echo " Flashing BOOTLOADER (0x60004000)"
     echo "========================================"
-    # bin + base-address 패턴. elf 로 굽으면 .flash_config (FCB) 섹션이
-    # 누락되어 boot ROM 이 FCB 매직 검증 fail → 보드 stuck.
-    pyocd flash build/bootloader/bootloader.bin $DEV --base-address 0x60000000
+    # bootloader는 Stage 2가 되어 0x60004000 부터 시작. Stage 1에서 jump 하도록 되어 있음.
+    # FCB/IVT 는 Stage1에서 담당하므로 bootloader는 순수 실행 코드만 포함. 0x60004000 부터 120KB 차지
+    pyocd flash build/bootloader/bootloader.bin $DEV --base-address 0x60004000
     echo ""
 }
 
@@ -60,10 +70,14 @@ flash_b() {
 case "$TARGET" in
     all)
         erase_chip
+        flash_stage1
         flash_bootloader
         flash_metadata
         flash_a
         flash_b
+        ;;
+    stage1)
+        flash_stage1
         ;;
     metadata)
         flash_metadata
@@ -82,7 +96,7 @@ case "$TARGET" in
         flash_b
         ;;
     *)
-        echo "usage: $0 [all|metadata|boot|a|b|apps]   (default: all)"
+        echo "usage: $0 [all|stage1|metadata|boot|a|b|apps]   (default: all)"
         exit 1
         ;;
 esac

@@ -19,5 +19,7 @@ target_link_options(${TARGET}.elf PRIVATE
 
 add_custom_command(TARGET ${TARGET}.elf POST_BUILD
     COMMAND ${CMAKE_OBJCOPY} -O binary ${TARGET}.elf ${TARGET}.bin
+    COMMAND ${CMAKE_SOURCE_DIR}/tools/post_build_stage2.py                                                                                                                               
+              ${CMAKE_CURRENT_BINARY_DIR}/${TARGET}.bin
     COMMENT "Building 🛡️  ${TARGET}.bin (Stage 2, ~240KB)"
 )

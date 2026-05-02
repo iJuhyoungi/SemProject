@@ -49,8 +49,11 @@
 
 #define SDRAM_BASE_ADDR              (0x80000000u)
 
-/* 🚀 [NVIC] Nested Vectored Interrupt Controller */
+/* [NVIC] Nested Vectored Interrupt Controller */
 #define NVIC_ISER0                              (*(volatile uint32_t *)0xE000E100) // 인터럽트 허용 레지스터 0
+#define NVIC_ICER0                              (*(volatile uint32_t *)0xE000E180) // 인터럽트 금지 레지스터 0
+#define NVIC_ICPR0                              (*(volatile uint32_t *)0xE000E280) // 인터럽트 클리어 레지스터 0
+#define SYST_CSR                                (*(volatile uint32_t *)0xE000E010) // SysTick 제어 및 상태 레지스터
 
 /* ARM Cortex-M7 MPU 레지스터 구조체 (CMSIS 호환) */
 #define MPU_TYPE    (*(volatile uint32_t *)0xE000ED90)

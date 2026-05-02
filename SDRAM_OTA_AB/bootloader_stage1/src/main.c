@@ -19,7 +19,7 @@
 
  static void Jump_To_Stage2(uint32_t addr) {
     uint32_t app_msp=*(volatile uint32_t *)addr;
-    uint32_t app_pc=*(volatile uint32_t*)addr+4;
+    uint32_t app_pc=*(volatile uint32_t*)(addr+4);
 
     __asm volatile ("cpsid i"); /* 인터럽트 비활성화 */
     __asm volatile ("dsb");     /* 모든 메모리 접근 완료 대기 */

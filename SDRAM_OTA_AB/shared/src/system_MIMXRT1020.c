@@ -67,7 +67,8 @@ uint32_t SystemCoreClock = 500000000U;
 #define RTWDOG_CS_RCS     (1u << 10)
 #define RTWDOG_CS_ULK     (1u << 11)
 
-__attribute__((section(".boot_text"))) void SystemInit(void)
+__attribute__((section(".boot_text"))) 
+void SystemInit(void)
 {
     __asm volatile ("cpsid i");
 

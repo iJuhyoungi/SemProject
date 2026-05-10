@@ -64,10 +64,15 @@
 #define MPU_RASR    (*(volatile uint32_t *)0xE000EDA0)
 
 
-/* 🚀 ARM Cortex-M7 SCB (System Control Block) 레지스터 주소 직접 매핑 */
+/* ARM Cortex-M7 SCB (System Control Block) 레지스터 주소 직접 매핑 */
+#define SCB_AIRCR       (*(volatile uint32_t *)0xE000ED0C)
 #define SCB_CCR         (*(volatile uint32_t *)0xE000ED14)
 #define SCB_ICIALLU     (*(volatile uint32_t *)0xE000ED50)
 #define SCB_VTOR        (*(volatile uint32_t *)0xE000ED08)
+
+/* AIRCR Helper */
+#define AIRCR_VECTKEY  (0x05FAu << 16)                                                                                                                                                   
+#define AIRCR_SYSRESETREQ  (1u << 2)
 
 /* D-Cache 제어용 특수 레지스터 */
 #define SCB_CCSIDR      (*(volatile uint32_t *)0xE000ED80) /* Cache Size ID */

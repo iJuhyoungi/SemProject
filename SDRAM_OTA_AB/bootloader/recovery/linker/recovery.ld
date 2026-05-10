@@ -17,6 +17,7 @@ MEMORY
     FLASH       (rx)    : ORIGIN = 0x603E0000, LENGTH = 0x00010000
     ITCM        (rwx)   : ORIGIN = 0x00000000, LENGTH = 0x00010000
     DTCM        (rwx)   : ORIGIN = 0x20000000, LENGTH = 0x00010000
+    OCRAM       (rwx)   : ORIGIN = 0x20200000, LENGTH = 0x00040000
 }
 
 __STACK_SIZE = 0x00001000;
@@ -76,5 +77,19 @@ SECTIONS
         . += __STACK_SIZE;
         __StackTop = .;
     } > DTCM
+    
+    /*                                                                                                                                                                                   
+    * Recovery 의 UART download buffer (240 KB, Stage 2 max size 와 동일).
+    * (NOLOAD): ELF 의 LOAD program header 에 안 포함, runtime 에 영역만 reserve.                                                                                                       
+    *           binary file 에 240 KB padding 안 들어감.                         
+    * 코드에서 extern uint8_t __recovery_buffer_start__[]; 로 reference.                                                                                                                
+    */
+    .recovery_buffer (NOLOAD) :
+    {
+        . = ALIGN(8);
+        __recovery_buffer_start__ = .;
+        . += 0x0003C000;
+        __recovery_buffer_end__ = .;
+    } > OCRAM
 
 }

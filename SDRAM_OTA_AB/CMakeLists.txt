@@ -14,6 +14,7 @@ add_compile_options(
 include_directories(shared/include)
 include_directories(bootloader/stage2/include)
 include_directories(app_slot_a/include)
+include_directories(bootloader/recovery/include)
 
 add_subdirectory(bootloader)
 add_subdirectory(app_slot_a)

@@ -23,6 +23,7 @@
 #define GPIO1_GDIR                              (*(volatile uint32_t *)0x401B8004)
 
 /* [LPUART1] 시리얼 통신 모듈 */
+#define LPUART_STAT_RDRF_MASK   (1u << 21)      /* Receive Data Register Full */
 #define LPUART1_BAUD                            (*(volatile uint32_t *)0x40184010)
 #define LPUART1_STAT                            (*(volatile uint32_t *)0x40184014)
 #define LPUART1_CTRL                            (*(volatile uint32_t *)0x40184018)

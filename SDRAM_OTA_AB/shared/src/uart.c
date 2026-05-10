@@ -46,3 +46,27 @@ void LPUART1_IRQHandler(void)
         (void)dummy;
     }
 }
+
+/*                                                                                                                                                                                       
+* RX byte (blocking polling).                            
+*                                                                                                                                                                                       
+* RDRF (Receive Data Register Full, STAT bit 21) polling.
+* UART1_Init() 이 LPUART1_CTRL.RE (bit 18) 를 set 하므로 RX 자동 활성.                                                                                                                  
+*                                                                                                                                                                                       
+* Recovery 의 active mode (Phase 4 Step 4) 에서 처음 사용 — host 와 byte 단위 교환.                                                                                                     
+* IRQ-driven 아닌 polling 인 이유: recovery 의 main 이 다른 일 안 함 (UART RX 만).                                                                                                      
+*/                                                                                                                                                                                      
+uint8_t UART1_RxByte(void)                                                                                                                                                               
+{                                                                                                                                                                                        
+    while (!(LPUART1_STAT & (1u << 21))) {                
+        /* wait until RX FIFO has data (RDRF bit) */                                                                                                                                     
+    }                                                                                                                                                                                    
+    return (uint8_t)(LPUART1_DATA & 0xFFu);
+}                                                                                                                                                                                        
+                                                        
+void UART1_RxBytes(uint8_t *buf, uint32_t n)                                                                                                                                             
+{
+    for (uint32_t i = 0; i < n; i++) {                                                                                                                                                   
+        buf[i] = UART1_RxByte();                          
+    }
+}

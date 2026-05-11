@@ -10,10 +10,10 @@
  * UART RX가 byte 단위라서, Little-endian으로 4바이트를 조립하는 helper 함수 필요. (예: size, CRC 수신 시)
  */
 
-#define STAGE2_FLASH_BASE 0x06004000u
+#define STAGE2_FLASH_BASE 0x60004000u
 
 /* flash chip 단위 (bootctrl_rom_api.c와 일치) */
-#define FLASH_SECTOR_SIZE 0x4096u
+#define FLASH_SECTOR_SIZE 4096u
 #define FLASH_PAGE_SIZE 256
 
 extern int BootCtrl_LowLevel_EraseSector(uint32_t address);

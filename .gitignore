@@ -58,5 +58,11 @@ build/
 
 *.log
 tools
+SDRAM/tools
+SDRAM_BOOT/tools/
+SDRAM_CACHE/tools/
+SDRAM_OTA_AB/tools/*
+!SDRAM_OTA_AB/tools/*.py
+UART/tools/
 SDRAM_OTA_AB/docs/*.txt
 SDRAM_OTA_AB/make_project_code.sh

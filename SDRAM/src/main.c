@@ -133,13 +133,22 @@
 //     }
 //     return 0;
 // }
+/* =============================================================================
+ * main.c  (활성 코드)
+ * -----------------------------------------------------------------------------
+ * SDRAM 초기화 프로젝트의 진입점.
+ * 부팅 순서: 클럭 -> LED/UART -> SEMC 클럭/핀 -> SDRAM 초기화 -> 무결성 테스트.
+ *
+ * (위쪽의 주석 처리된 블록은 모듈화 이전의 옛 단일파일 버전 — 학습 기록용 보존)
+ * ============================================================================= */
 #include <stdint.h>
 #include "clock.h"
 #include "uart.h"
 #include "led.h"
 #include "semc.h"
 
-/* 공용 딜레이 함수 */
+/* 공용 딜레이 함수.
+ * volatile 카운터로 컴파일러가 빈 루프를 제거하지 못하게 막는다. (정밀 타이머 아님) */
 void delay_loop(uint32_t count)
 {
     for (volatile uint32_t i = 0; i < count; i++) {
@@ -149,32 +158,38 @@ void delay_loop(uint32_t count)
 
 int main(void)
 {
+    /* 디버거가 붙을 시간을 벌어주는 초기 지연 (안전장치) */
     delay_loop(2000000);
 
-    Clock_Init_132MHz();
-    LED_Init();
-    UART1_Init();
+    /* --- 기본 하드웨어 기동 --- */
+    Clock_Init_132MHz();   /* 시스템 클럭 트리를 132MHz 로 (소스=Sys PLL, 4분주) */
+    LED_Init();            /* LED 핀: 클럭 게이팅 + MUX + 출력 방향 */
+    UART1_Init();          /* 디버그 시리얼: 이후 모든 진행 상황을 로그로 출력 */
 
     UART1_SendString("\r\n=================================\r\n");
     UART1_SendString(" Phase 1.1: SDRAM Init Started\r\n");
     UART1_SendString("=================================\r\n");
 
+    /* --- [1] SEMC 준비: SDRAM 컨트롤러 클럭 + 외부 메모리 핀 연결 --- */
     UART1_SendString("[1] Configuring SEMC Clock & Pins...\r\n");
-    SDRAM_Clock_Init();
-    SDRAM_Pin_Init();
+    SDRAM_Clock_Init();    /* CCGR3 게이팅으로 SEMC 모듈 클럭 ON */
+    SDRAM_Pin_Init();      /* EMC 핀들을 SEMC 기능으로 MUX, EMC_28 = DQS+SION */
     UART1_SendString(" -> Pin Muxing Done.\r\n");
 
+    /* --- [2] SDRAM 초기화 시퀀스 (Precharge -> Refresh x2 -> MRS) --- */
     UART1_SendString("[2] Executing SDRAM Init Sequence...\r\n");
     if (!SDRAM_Init_Sequence()) {
+        /* 실패 시: 더 진행하면 위험하므로 로그 남기고 영구 정지 */
         UART1_SendString(" -> FATAL: SDRAM Initialization Aborted!\r\n");
         while (1) {
-            __asm("wfi");
+            __asm("wfi");   /* wfi: 인터럽트 대기 — 저전력으로 멈춰 있음 */
         }
     }
 
     UART1_SendString(" -> Precharge / Refresh / MRS Complete!\r\n");
     UART1_SendString(" -> SDRAM is NOW AWAKE.\r\n");
 
+    /* --- [3] 16비트 폭 접근 무결성 테스트 --- */
     if (!SDRAM_Test16()) {
         UART1_SendString(" -> Stop after 16-bit failure.\r\n");
         while (1) {
@@ -182,6 +197,7 @@ int main(void)
         }
     }
 
+    /* --- [4] 32비트 폭 접근 무결성 테스트 --- */
     if (!SDRAM_Test32()) {
         UART1_SendString(" -> Stop after 32-bit failure.\r\n");
         while (1) {
@@ -191,6 +207,7 @@ int main(void)
 
     UART1_SendString("\r\n[Done] SDRAM test routine finished.\r\n");
 
+    /* 모든 테스트 통과 — 할 일이 끝났으므로 wfi 로 대기 */
     while (1) {
         __asm("wfi");
     }

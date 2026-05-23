@@ -163,6 +163,16 @@ static int Stage2_Verify(uint32_t base)
         return 0;
     }
 
+    /**
+     * SHA-256 - 이미지의 fingerprint 계산 후 UART 출력
+     */
+
+    uint8_t img_hash[SHA256_DIGEST_SIZE];
+    SHA256_Compute((const uint8_t*)base,size,img_hash);
+    UART1_SendString("[Verify] SHA-256: ");
+    print_digest_hex(img_hash);
+
+
     return 1; /* 검증 통과 */
 }
 

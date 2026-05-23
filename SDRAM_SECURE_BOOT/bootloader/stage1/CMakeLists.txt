@@ -9,6 +9,12 @@ add_executable(${TARGET}.elf ${SOURCES})
 # (UART init + .data/.ramfunc reloc + .bss zero)
 target_compile_definitions(${TARGET}.elf PRIVATE IS_BOOTLOADER)
 
+# string_min.c 만 별도 옵션: 본인이 본인을 memset 호출로 자동 치환되는 것 방지
+set_source_files_properties(
+    ${CMAKE_SOURCE_DIR}/shared/src/string_min.c
+    PROPERTIES COMPILE_OPTIONS "-fno-tree-loop-distribute-patterns;-fno-builtin"
+)
+
 set(LINKER_SCRIPT ${CMAKE_CURRENT_SOURCE_DIR}/linker/stage1.ld)
 target_link_options(${TARGET}.elf PRIVATE
     -T${LINKER_SCRIPT}

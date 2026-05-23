@@ -3,6 +3,7 @@
 #include "led.h"
 #include "rt1020_regs.h"
 #include "crc32.h"
+#include "sha256.h"
 
 /**
  * Stage 1 immutable bootloader — Secure Boot.
@@ -48,6 +49,49 @@ static void Jump_To_Stage2(uint32_t addr)
         "bx %1\n"       /*Stage 2 Reset_Handler 로 점프*/
         ::"r"(app_msp),
         "r"(app_pc));
+}
+
+/* digest 32byte를 16진수의 문자열로 출력 */
+static void print_digest_hex(const uint8_t digest[SHA256_DIGEST_SIZE]) {
+    static const char hex[]= "0123456789abcdef";
+    char buf[3];
+    buf[2]='\0';
+    for(uint32_t i=0;i<SHA256_DIGEST_SIZE;++i){
+        buf[0]=hex[digest[i]>>4];           // 상위 4비트
+        buf[1]=hex[digest[i]&0x0Fu];        // 하위 4비트
+        UART1_SendString(buf);
+    }
+    UART1_SendString("\r\n");
+}
+
+/*
+* SHA-256 셀프테스트 — 답이 정해진 3개 벡터 해시·출력.
+* 호스트의 sha256sum 과 비교해 정답이면 우리 구현이 정확하다는 증명.
+*/
+static void sha256_selftest(void)
+{
+    uint8_t digest[SHA256_DIGEST_SIZE];
+
+    UART1_SendString("[SHA] Self-test running...\r\n");
+
+    /* 벡터 1: 빈 문자열 */
+    SHA256_Compute((const uint8_t *)"", 0, digest);
+    UART1_SendString("[SHA] empty   -> ");
+    print_digest_hex(digest);
+
+    /* 벡터 2: "abc" */
+    SHA256_Compute((const uint8_t *)"abc", 3, digest);
+    UART1_SendString("[SHA] \"abc\"   -> ");
+    print_digest_hex(digest);
+
+    /* 벡터 3: 56-byte (패딩 edge case) */
+    static const char msg3[] =
+        "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq";
+    SHA256_Compute((const uint8_t *)msg3, 56, digest);
+    UART1_SendString("[SHA] 56-byte -> ");
+    print_digest_hex(digest);
+
+    UART1_SendString("[SHA] Self-test done.\r\n\r\n");
 }
 
 /*
@@ -129,6 +173,8 @@ int main()
     UART1_SendString("=============================\r\n");
 
     LED_Init();
+
+    sha256_selftest();
 
     UART1_SendString("[BL1] Verifying Stage 2 ...\r\n");
     if (Stage2_Verify(STAGE2_BASE))

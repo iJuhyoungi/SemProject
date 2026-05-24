@@ -4,6 +4,7 @@
 #include "rt1020_regs.h"
 #include "crc32.h"
 #include "sha256.h"
+#include "bignum.h"
 
 /**
  * Stage 1 immutable bootloader — Secure Boot.
@@ -52,22 +53,24 @@ static void Jump_To_Stage2(uint32_t addr)
 }
 
 /* digest 32byte를 16진수의 문자열로 출력 */
-static void print_digest_hex(const uint8_t digest[SHA256_DIGEST_SIZE]) {
-    static const char hex[]= "0123456789abcdef";
+static void print_digest_hex(const uint8_t digest[SHA256_DIGEST_SIZE])
+{
+    static const char hex[] = "0123456789abcdef";
     char buf[3];
-    buf[2]='\0';
-    for(uint32_t i=0;i<SHA256_DIGEST_SIZE;++i){
-        buf[0]=hex[digest[i]>>4];           // 상위 4비트
-        buf[1]=hex[digest[i]&0x0Fu];        // 하위 4비트
+    buf[2] = '\0';
+    for (uint32_t i = 0; i < SHA256_DIGEST_SIZE; ++i)
+    {
+        buf[0] = hex[digest[i] >> 4];    // 상위 4비트
+        buf[1] = hex[digest[i] & 0x0Fu]; // 하위 4비트
         UART1_SendString(buf);
     }
     UART1_SendString("\r\n");
 }
 
 /*
-* SHA-256 셀프테스트 — 답이 정해진 3개 벡터 해시·출력.
-* 호스트의 sha256sum 과 비교해 정답이면 우리 구현이 정확하다는 증명.
-*/
+ * SHA-256 셀프테스트 — 답이 정해진 3개 벡터 해시·출력.
+ * 호스트의 sha256sum 과 비교해 정답이면 우리 구현이 정확하다는 증명.
+ */
 static void sha256_selftest(void)
 {
     uint8_t digest[SHA256_DIGEST_SIZE];
@@ -168,12 +171,268 @@ static int Stage2_Verify(uint32_t base)
      */
 
     uint8_t img_hash[SHA256_DIGEST_SIZE];
-    SHA256_Compute((const uint8_t*)base,size,img_hash);
+    SHA256_Compute((const uint8_t *)base, size, img_hash);
     UART1_SendString("[Verify] SHA-256: ");
     print_digest_hex(img_hash);
 
-
     return 1; /* 검증 통과 */
+}
+
+static void bn_print_hex_be(const bn_t a)
+{
+    static const char hex[] = "0123456789abcdef";
+    uint8_t buf[BN_BYTES];
+    bn_to_bytes_be(buf, a);
+
+    uint32_t start = 0;
+    while (start < BN_BYTES - 1 && buf[start] == 0)
+    {
+        ++start;
+    }
+
+    char out[3] = {
+        0,
+    };
+    for (uint32_t i = start; i < BN_BYTES; ++i)
+    {
+        out[0] = hex[(buf[i] >> 4) & 0xF];
+        out[1] = hex[(buf[i] & 0xF)];
+        UART1_SendString(out);
+    }
+    UART1_SendString("\r\n");
+}
+
+static void bignum_selftest(void)
+{
+    bn_t a, b, r;
+    uint32_t carry;
+
+    UART1_SendString("[BN] Self-test running...\r\n");
+
+    /* 테스트 1: 단순 덧셈 (carry 없음)
+        a = 1, b = 2, expect r = 3, carry_out = 0 */
+    bn_zero(a);
+    a[0] = 1;
+
+    bn_zero(b);
+    b[0] = 2;
+
+    carry = bn_add(r, a, b);
+    UART1_SendString("[BN] add 1+2: ");
+    UART1_SendString(r[0] == 3 && carry == 0 ? "PASS\r\n" : "FAIL\r\n");
+
+    /* 테스트 2: word 경계 carry 전파
+        a = 0xFFFFFFFF, b = 1, expect r[0] = 0, r[1] = 1, carry_out = 0 */
+    bn_zero(a);
+    a[0] = 0xFFFFFFFFu;
+
+    bn_zero(b);
+    b[0] = 1;
+    carry = bn_add(r, a, b);
+
+    UART1_SendString("[BN] add carry: ");
+    UART1_SendString((r[0] == 0 && r[1] == 1 && carry == 0) ? "PASS\r\n" : "FAIL\r\n");
+
+    /* 테스트 3: top-word overflow
+        a = b = 모든 워드가 0xFFFFFFFF, expect 최종 carry_out = 1 */
+    for (int i = 0; i < BN_WORDS; ++i)
+    {
+        a[i] = 0xFFFFFFFFu;
+        b[i] = 0;
+    }
+    b[0] = 1;
+    carry = bn_add(r, a, b); /* (2^2048 - 1) + 1 = 2^2048, overflow */
+
+    UART1_SendString("[BN] add overflow: ");
+    UART1_SendString((carry == 1 && bn_is_zero(r)) ? "PASS\r\n" : "FAIL\r\n");
+
+    /* 테스트 4: sub borrow
+        a = [0, 1, 0, ...] (즉 2^32), b = 1, expect r = 0xFFFFFFFF, borrow_out = 0 */
+    bn_zero(a);
+    a[1] = 1;
+    bn_zero(b);
+    b[0] = 1;
+    uint32_t borrow = bn_sub(r, a, b);
+
+    UART1_SendString("[BN] sub borrow: ");
+    UART1_SendString((r[0] == 0xFFFFFFFFu && r[1] == 0 && borrow == 0) ? "PASS\r\n" : "FAIL\r\n");
+
+    /* 테스트 5: a - a = 0 */
+    for (int i = 0; i < BN_WORDS; ++i)
+    {
+        a[i] = 0xDEADBEEFu;
+    }
+
+    borrow = bn_sub(r, a, a);
+
+    UART1_SendString("[BN] sub self: ");
+    UART1_SendString((bn_is_zero(r) && borrow == 0) ? "PASS\r\n" : "FAIL\r\n");
+
+    /* 테스트 6: cmp */
+    bn_zero(a);
+    a[5] = 100;
+
+    bn_zero(b);
+    b[5] = 100;
+
+    int c0 = bn_cmp(a, b); /* 0 */
+    bn_zero(b);
+    b[5] = 99;
+
+    int c1 = bn_cmp(a, b); /* +1 (a>b) */
+    bn_zero(b);
+    b[5] = 101;
+
+    int c2 = bn_cmp(a, b); /* -1 (a<b) */
+
+    UART1_SendString("[BN] cmp: ");
+    UART1_SendString((c0 == 0 && c1 > 0 && c2 < 0) ? "PASS\r\n" : "FAIL\r\n");
+
+    /* 테스트 7: byte roundtrip
+        원래 = [0x01, 0x02, ..., 0xFF, 0x00] 256바이트
+        from_bytes_be → to_bytes_be 결과 == 원본 */
+    uint8_t in[BN_BYTES], out[BN_BYTES];
+    for (uint32_t i = 0; i < BN_BYTES; ++i)
+    {
+        in[i] = (uint8_t)(i + 1); /* 1, 2, ... */
+    }
+
+    bn_from_bytes_be(a, in);
+    bn_to_bytes_be(out, a);
+    int eq = 1;
+    for (uint32_t i = 0; i < BN_BYTES; ++i)
+    {
+        if (in[i] != out[i])
+        {
+            eq = 0;
+            break;
+        }
+    }
+
+    UART1_SendString("[BN] byte roundtrip: ");
+    UART1_SendString(eq ? "PASS\r\n" : "FAIL\r\n");
+
+    /* 추가 보너스 — byte conversion 검증의 핵심:
+        in[0] = 0x01 = MSB → a[63] 의 최상위 바이트로 들어가야
+        그러므로 a[63] 의 상위 8비트 = 0x01 인지 확인 가능 */
+    UART1_SendString("[BN] BE check: ");
+    UART1_SendString(((a[BN_WORDS - 1] >> 24) == 0x01u) ? "PASS\r\n" : "FAIL\r\n");
+
+    /* sample print — bn_print_hex_be 가 잘 동작하는지 시각 확인용 */
+    bn_zero(a);
+    a[0] = 0xDEADBEEF;
+    a[1] = 0xCAFEBABE;
+    UART1_SendString("[BN] sample = ");
+    bn_print_hex_be(a); /* expect: cafebabedeadbeef  (옵션 B) 또는 256바이트 0-padded (옵션 A) */
+
+
+    /* === bn_mul tests === */
+    bn2_t prod;
+
+    /* M1: 1 * 1 = 1 */
+    bn_zero(a);
+    a[0] = 1;
+    bn_zero(b);
+    b[0] = 1;
+
+    bn_mul(prod, a, b);
+    int m1_ok = (prod[0] == 1);
+
+    for (uint32_t i = 1; i < BN_WORDS_2X; ++i)
+    {
+        if (prod[i])
+        {
+            m1_ok = 0;
+            break;
+        }
+    }
+
+    UART1_SendString("[BN] mul 1*1: ");
+    UART1_SendString(m1_ok ? "PASS\r\n" : "FAIL\r\n");
+
+    /* M2: 0xFFFFFFFF * 0xFFFFFFFF = 0xFFFFFFFE00000001
+            prod[0] = 0x00000001, prod[1] = 0xFFFFFFFE */
+    bn_zero(a);
+    a[0] = 0xFFFFFFFFu;
+    bn_zero(b);
+    b[0] = 0xFFFFFFFFu;
+
+    bn_mul(prod, a, b);
+
+    UART1_SendString("[BN] mul FFFF*FFFF: ");
+    UART1_SendString((prod[0] == 0x00000001u && prod[1] == 0xFFFFFFFEu) ? "PASS\r\n" : "FAIL\r\n");
+
+    /* M3: cross-word — a = 2^32 (a[1]=1), b = 3 (b[0]=3)
+            expect prod[1] = 3, 나머지 0 */
+    bn_zero(a);
+    a[1] = 1;
+    bn_zero(b);
+    b[0] = 3;
+
+    bn_mul(prod, a, b);
+
+    UART1_SendString("[BN] mul cross-word: ");
+    UART1_SendString((prod[0] == 0 && prod[1] == 3 && prod[2] == 0) ? "PASS\r\n" : "FAIL\r\n");
+
+    /* M4: top-word — a[63] = 0xFFFFFFFF, b[63] = 0xFFFFFFFF
+            expect prod[126] = 0x00000001, prod[127] = 0xFFFFFFFE */
+    bn_zero(a);
+    a[63] = 0xFFFFFFFFu;
+    bn_zero(b);
+    b[63] = 0xFFFFFFFFu;
+
+    bn_mul(prod, a, b);
+
+    UART1_SendString("[BN] mul top*top: ");
+    UART1_SendString((prod[126] == 0x00000001u && prod[127] == 0xFFFFFFFEu) ? "PASS\r\n" : "FAIL\r\n");
+
+    /* M5: zero — a * 0 = 0 */
+    for (uint32_t i = 0; i < BN_WORDS; ++i)
+        a[i] = 0xDEADBEEFu;
+    bn_zero(b);
+    bn_mul(prod, a, b);
+
+    int m5_ok = 1;
+
+    for (uint32_t i = 0; i < BN_WORDS_2X; ++i)
+    {
+        if (prod[i])
+        {
+            m5_ok = 0;
+            break;
+        }
+    }
+
+    UART1_SendString("[BN] mul x*0: ");
+    UART1_SendString(m5_ok ? "PASS\r\n" : "FAIL\r\n");
+
+    /* M6: commutative — a*b == b*a */
+    bn_zero(a);
+    a[0] = 0x12345678u;
+    a[3] = 0xABCDEF01u;
+
+    bn_zero(b);
+    b[0] = 0x9ABCDEF0u;
+    b[5] = 0x11223344u;
+
+    bn2_t prod2;
+    bn_mul(prod, a, b);
+    bn_mul(prod2, b, a);
+
+    int m6_ok = 1;
+    for (uint32_t i = 0; i < BN_WORDS_2X; ++i)
+    {
+        if (prod[i] != prod2[i])
+        {
+            m6_ok = 0;
+            break;
+        }
+    }
+
+    UART1_SendString("[BN] mul commutative: ");
+    UART1_SendString(m6_ok ? "PASS\r\n" : "FAIL\r\n");
+
+    UART1_SendString("[BN] Self-test done.\r\n\r\n");
 }
 
 int main()
@@ -185,6 +444,7 @@ int main()
     LED_Init();
 
     sha256_selftest();
+    bignum_selftest();
 
     UART1_SendString("[BL1] Verifying Stage 2 ...\r\n");
     if (Stage2_Verify(STAGE2_BASE))

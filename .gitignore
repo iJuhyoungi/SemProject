@@ -54,7 +54,21 @@ dkms.conf
 # debug information files
 *.dwo
 
+# build artifacts
 build/
+*.o
+*.elf
+*.bin
+*.map
+
+# host test build
+tests/build/
+
+# editor / OS
+*.swp
+.vscode/
+.idea/
+.DS_Store
 
 *.log
 tools

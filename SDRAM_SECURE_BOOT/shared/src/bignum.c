@@ -137,7 +137,7 @@ void bn_mod(bn_t r, const bn2_t a, const bn_t n)
         r_overflow = new_overflow; // shift로 빠져나간 최상위 비트
 
         /**
-         * a의 i번째 비트를 r의 LSB로 shift-in 
+         * a의 i번째 비트를 r의 LSB로 shift-in
          * r = r | (a[i] ? 1 : 0)
          * a[i]는 a의 word_idx = i/32 번째 워드의 bit_idx = i%32 번째 비트
          */
@@ -153,13 +153,48 @@ void bn_mod(bn_t r, const bn2_t a, const bn_t n)
          * r_total>=n이면, r -= n (r_total - n >= 0 이므로 r - n >= 0)
          * r_overflow = 1 이면, 무조건 r_total >n (n < 2^2048)
          * 아니면 bn_cmp(r, n) >= 0 인지 검사
-         * 
+         *
          * 결국은 r >=n 인지 아닌지 확인
          */
         if (r_overflow > 0 || bn_cmp(r, n) >= 0)
         {
             bn_sub(r, r, n);
             r_overflow = 0; /* r에서 n을 빼면 최대값이 n-1이므로 r_overflow는 0으로 리셋 */
+        }
+    }
+}
+/**
+ * modular exponentiation: r = m^e mod n (e는 uint32_t이며 bn_t가 아님)
+ * RSA public expoenet는 항상 작은값(대부분 65537)
+ */
+void bn_modexp(bn_t r, const bn_t m, uint32_t e, const bn_t n)
+{
+    bn_zero(r);
+    r[0] = 1; /* r=1로 초기화 */
+
+    if (e == 0)
+        return; /* m^0 mod n = 1 */
+
+    /*e의 최상위 비트 찾기*/
+    int top_bit = 31;
+    while (top_bit >= 0 && !((e >> top_bit) & 1u))
+    {
+        --top_bit;
+    }
+
+    /*square and multiply (from MSB to LSB)*/
+    bn2_t tmp;
+    for (int i = top_bit; i >= 0; --i)
+    {
+        /*square: r=r^2 mod n*/
+        bn_mul(tmp, r, r);
+        bn_mod(r, tmp, n);
+
+        /*bit==1이면 r=r*m mod n*/
+        if ((e >> i) & 1u)
+        {
+            bn_mul(tmp, r, m);
+            bn_mod(r, tmp, n);
         }
     }
 }

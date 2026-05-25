@@ -40,4 +40,6 @@ void bn_mul(bn2_t prod, const bn_t a, const bn_t b);        // prod = a * b
  */
 void bn_mod(bn_t r, const bn2_t a, const bn_t n);          // r = a mod n  (a는 4096비트, n과 r은 2048비트)
 
+void bn_modexp(bn_t r, const bn_t m, uint32_t e, const bn_t n);       // r = m^e mod n  (e는 uint32_t이며 bn_t가 아님)
+
 #endif /* BIGNUM_H */

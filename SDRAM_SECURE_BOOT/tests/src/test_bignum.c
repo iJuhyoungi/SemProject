@@ -260,6 +260,48 @@ void test_bn_mod_v5_exactly_2n_returns_zero(void)
 }
 
 /* ========================================================
+* modexp — m^e mod n  (square-and-multiply, e=65537 RSA case 포함)
+* ======================================================== */
+
+#include "../vectors/bn_modexp_vectors.h"
+
+void test_bn_modexp_v1_2_pow_10_mod_1000(void)
+{ 
+    bn_t r;
+    bn_modexp(r, v1_small_m, v1_small_e, v1_small_n);
+    TEST_ASSERT_EQUAL_UINT32_ARRAY(v1_small_r, r, BN_WORDS);
+}
+
+void test_bn_modexp_v2_e_one_returns_m(void)
+{ 
+    bn_t r;
+    bn_modexp(r, v2_e_one_m, v2_e_one_e, v2_e_one_n);
+    TEST_ASSERT_EQUAL_UINT32_ARRAY(v2_e_one_r, r, BN_WORDS);
+}
+
+void test_bn_modexp_v3_e_zero_returns_one(void)
+{ 
+    bn_t r;
+    bn_modexp(r, v3_e_zero_m, v3_e_zero_e, v3_e_zero_n);
+    TEST_ASSERT_EQUAL_UINT32_ARRAY(v3_e_zero_r, r, BN_WORDS);
+}
+
+void test_bn_modexp_v4_e_65537_small_numbers(void)
+{ 
+    bn_t r;
+    bn_modexp(r, v4_e_65537_small_m, v4_e_65537_small_e, v4_e_65537_small_n);
+    TEST_ASSERT_EQUAL_UINT32_ARRAY(v4_e_65537_small_r, r, BN_WORDS);
+}
+
+void test_bn_modexp_v5_rsa_2048_full_size(void)
+{ 
+    bn_t r;
+    bn_modexp(r, v5_rsa_2048_m, v5_rsa_2048_e, v5_rsa_2048_n);
+    TEST_ASSERT_EQUAL_UINT32_ARRAY(v5_rsa_2048_r, r, BN_WORDS);
+}
+
+
+/* ========================================================
 * main 
 * ======================================================== */
 
@@ -299,6 +341,14 @@ int main(void)
     RUN_TEST(test_bn_mod_v3_large_a_small_n);
     RUN_TEST(test_bn_mod_v4_rsa_size);
     RUN_TEST(test_bn_mod_v5_exactly_2n_returns_zero);
+
+    /* modexp */
+    RUN_TEST(test_bn_modexp_v1_2_pow_10_mod_1000);
+    RUN_TEST(test_bn_modexp_v2_e_one_returns_m);
+    RUN_TEST(test_bn_modexp_v3_e_zero_returns_one);
+    RUN_TEST(test_bn_modexp_v4_e_65537_small_numbers);
+    RUN_TEST(test_bn_modexp_v5_rsa_2048_full_size);
+
 
     return UNITY_END();
 }

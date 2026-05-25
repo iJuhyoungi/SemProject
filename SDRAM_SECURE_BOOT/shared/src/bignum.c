@@ -166,6 +166,7 @@ void bn_mod(bn_t r, const bn2_t a, const bn_t n)
 /**
  * modular exponentiation: r = m^e mod n (e는 uint32_t이며 bn_t가 아님)
  * RSA public expoenet는 항상 작은값(대부분 65537)
+ * RSA의 modexp는 256바이트(2048비트) 정수 ↔ 정수 변환
  */
 void bn_modexp(bn_t r, const bn_t m, uint32_t e, const bn_t n)
 {

@@ -25,6 +25,15 @@ target_link_libraries(test_sha256 PRIVATE unity sha256)
 
 add_test(NAME sha256 COMMAND test_sha256)
 
+add_library(rsa STATIC ../shared/src/rsa.c)
+target_include_directories(rsa PUBLIC ../shared/include)
+target_link_libraries(rsa PUBLIC bignum sha256)
+
+add_executable(test_rsa src/test_rsa.c)
+target_link_libraries(test_rsa PRIVATE unity rsa)
+
+add_test(NAME rsa COMMAND test_rsa)
+
 # CTest 통합
 enable_testing()
 add_test(NAME bignum COMMAND test_bignum)

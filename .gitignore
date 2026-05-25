@@ -80,3 +80,5 @@ SDRAM_OTA_AB/tools/*
 UART/tools/
 SDRAM_OTA_AB/docs/*.txt
 SDRAM_OTA_AB/make_project_code.sh
+tests/vectors/rsa_test_key.pem
+*.pem

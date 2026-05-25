@@ -32,5 +32,12 @@ typedef uint32_t bn2_t[BN_WORDS_2X];
 
 void bn2_zero(bn2_t r);
 void bn_mul(bn2_t prod, const bn_t a, const bn_t b);        // prod = a * b
+/**
+ * modular reduction : r = a mod n
+ * 입력 a는 128워드,
+ * 결과 r은 64워드(n보다는 작은 값),
+ * n!=0을 가정(RSA modules은 항상 nonzero)
+ */
+void bn_mod(bn_t r, const bn2_t a, const bn_t n);          // r = a mod n  (a는 4096비트, n과 r은 2048비트)
 
 #endif /* BIGNUM_H */

@@ -113,6 +113,53 @@ void bn_mul(bn2_t prod, const bn_t a, const bn_t b)
             prod[i + j] = (uint32_t)t;
             carry = (uint32_t)(t >> 32);
         }
-        prod[i + BN_WORDS] = carry;         // 안쪽의 루프가 종료되고 난 뒤 남은 carry는 prod[i + BN_WORDS] 에 저장 (최대 i+j = 63+63=126, carry는 127번째 워드로)
+        prod[i + BN_WORDS] = carry; // 안쪽의 루프가 종료되고 난 뒤 남은 carry는 prod[i + BN_WORDS] 에 저장 (최대 i+j = 63+63=126, carry는 127번째 워드로)
+    }
+}
+
+void bn_mod(bn_t r, const bn2_t a, const bn_t n)
+{
+    bn_zero(r);
+    uint32_t r_overflow = 0; // shift로 빠져나간 최상위 1비트
+
+    /* a의 최상위 비트(4095)부터 0까지 한 비트씩 처리 */
+    for (int i = (int)(BN_WORDS_2X * 32u) - 1; i >= 0; --i)
+    {
+        /* r = r << 1. 잘려나간 최상위 비트를 r_overflow로 보관 */
+        uint32_t new_overflow = (r[BN_WORDS - 1] >> 31) & 1u;
+        uint32_t carry = 0;
+        for (int k = 0; k < BN_WORDS; ++k)
+        {
+            uint32_t next_carry = (r[k] >> 31) & 1u;
+            r[k] = (r[k] << 1) | carry;
+            carry = next_carry;
+        }
+        r_overflow = new_overflow; // shift로 빠져나간 최상위 비트
+
+        /**
+         * a의 i번째 비트를 r의 LSB로 shift-in 
+         * r = r | (a[i] ? 1 : 0)
+         * a[i]는 a의 word_idx = i/32 번째 워드의 bit_idx = i%32 번째 비트
+         */
+        uint32_t word_idx = (uint32_t)i >> 5u;
+        uint32_t bit_idx = (uint32_t)i & 31u;
+        if ((a[word_idx] >> bit_idx) & 1u)
+        {
+            r[0] |= 1u;
+        }
+
+        /**
+         * r_total=r_overflow*2^2048 + r
+         * r_total>=n이면, r -= n (r_total - n >= 0 이므로 r - n >= 0)
+         * r_overflow = 1 이면, 무조건 r_total >n (n < 2^2048)
+         * 아니면 bn_cmp(r, n) >= 0 인지 검사
+         * 
+         * 결국은 r >=n 인지 아닌지 확인
+         */
+        if (r_overflow > 0 || bn_cmp(r, n) >= 0)
+        {
+            bn_sub(r, r, n);
+            r_overflow = 0; /* r에서 n을 빼면 최대값이 n-1이므로 r_overflow는 0으로 리셋 */
+        }
     }
 }

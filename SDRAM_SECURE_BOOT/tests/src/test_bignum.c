@@ -1,5 +1,6 @@
 #include "unity.h" 
 #include "bignum.h"
+#include "../vectors/bn_mod_vectors.h"
     
 void setUp(void) {}
 void tearDown(void) {}
@@ -197,6 +198,68 @@ void test_bn_mul_is_commutative(void)
 }
 
 /* ========================================================
+* mod (128 word a) mod (64 word n) = (64 word r)
+*   reference: tests/vectors/gen_bn_mod_vectors.py 의 Python int 결과
+* ======================================================== */
+
+void test_bn_mod_v1_a_less_than_n_returns_a(void)
+{
+    bn_t r;
+    // bn2_t a;
+    // memcpy(a, v1_a_less_than_n_a, sizeof(bn2_t));
+    // memcpy(n, v1_a_less_than_n_n, sizeof(bn_t));
+    // bn_mod(r, a, n);
+    bn_mod(r, v1_a_less_than_n_a, v1_a_less_than_n_n);
+    TEST_ASSERT_EQUAL_UINT32_ARRAY(v1_a_less_than_n_r, r, BN_WORDS);
+}
+
+void test_bn_mod_v2_simple(void)
+{ 
+    bn_t r;
+    // bn2_t a;
+    // memcpy(a, v2_simple_a, sizeof(bn2_t));
+    // memcpy(n, v2_simple_n, sizeof(bn_t));
+    // bn_mod(r, a, n);
+    bn_mod(r, v2_simple_a, v2_simple_n);
+    TEST_ASSERT_EQUAL_UINT32_ARRAY(v2_simple_r, r, BN_WORDS);
+}
+
+void test_bn_mod_v3_large_a_small_n(void)
+{ 
+    bn_t r;
+    // bn2_t a;
+    // memcpy(a, v3_large_a_small_n_a, sizeof(bn2_t));
+    // memcpy(n, v3_large_a_small_n_n, sizeof(bn_t));
+    // bn_mod(r, a, n);
+    bn_mod(r, v3_large_a_small_n_a, v3_large_a_small_n_n);
+    TEST_ASSERT_EQUAL_UINT32_ARRAY(v3_large_a_small_n_r, r, BN_WORDS);
+}
+
+void test_bn_mod_v4_rsa_size(void)
+{ 
+    bn_t r;
+    // bn2_t a;
+    // memcpy(a, v4_rsa_size_a, sizeof(bn2_t));
+    // memcpy(n, v4_rsa_size_n, sizeof(bn_t));
+    // bn_mod(r, a, n);
+    bn_mod(r, v4_rsa_size_a, v4_rsa_size_n);
+    TEST_ASSERT_EQUAL_UINT32_ARRAY(v4_rsa_size_r, r, BN_WORDS);
+}
+
+void test_bn_mod_v5_exactly_2n_returns_zero(void)
+{
+    bn_t r; 
+    // bn2_t a; 
+    // memcpy(a, v5_exactly_2n_a, sizeof(bn2_t));
+    // memcpy(n, v5_exactly_2n_n, sizeof(bn_t));
+    // bn_mod(r, a, n);
+    bn_mod(r, v5_exactly_2n_a, v5_exactly_2n_n);
+    /* 2n mod n = 0 */
+    TEST_ASSERT_EQUAL_UINT32_ARRAY(v5_exactly_2n_r, r, BN_WORDS);
+    TEST_ASSERT_TRUE(bn_is_zero(r));
+}
+
+/* ========================================================
 * main 
 * ======================================================== */
 
@@ -229,6 +292,13 @@ int main(void)
     RUN_TEST(test_bn_mul_top_word_squared);
     RUN_TEST(test_bn_mul_anything_times_zero);
     RUN_TEST(test_bn_mul_is_commutative);
+
+    /* mod */
+    RUN_TEST(test_bn_mod_v1_a_less_than_n_returns_a);
+    RUN_TEST(test_bn_mod_v2_simple);
+    RUN_TEST(test_bn_mod_v3_large_a_small_n);
+    RUN_TEST(test_bn_mod_v4_rsa_size);
+    RUN_TEST(test_bn_mod_v5_exactly_2n_returns_zero);
 
     return UNITY_END();
 }

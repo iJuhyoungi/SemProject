@@ -229,6 +229,20 @@ static void selftest_smoke(void)
     UART1_SendString("[Selftest] bn_mul(1*1)     : ");
     UART1_SendString((prod[0] == 1) ? "PASS\r\n" : "FAIL\r\n");
 
+    /* bn_mod : 5 mod 3 = 2 */
+    bn_t mod_r;
+    bn2_t five;
+    bn2_zero(five);
+    five[0]=5;
+    
+    bn_zero(a);
+    a[0]=3;
+
+    bn_mod(mod_r,five,a);
+    UART1_SendString("[Selftest] bn_mod(5 mod 3) : ");
+    UART1_SendString((mod_r[0] == 2) && (mod_r[1] == 0) ? "PASS\r\n" : "FAIL\r\n");
+
+
     UART1_SendString("[Selftest] done.\r\n\r\n");
 }
 

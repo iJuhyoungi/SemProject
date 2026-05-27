@@ -28,5 +28,6 @@ target_link_options(${TARGET}.elf PRIVATE
 # 지금(Step 0)은 순수 .bin 만 생성.
 add_custom_command(TARGET ${TARGET}.elf POST_BUILD
     COMMAND ${CMAKE_OBJCOPY} -O binary ${TARGET}.elf ${TARGET}.bin
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/tools/patch_stage2_header.py ${TARGET}.bin
     COMMENT "Building 🛡️ ${TARGET}.bin (Stage 2, 검증 대상 image)"
 )

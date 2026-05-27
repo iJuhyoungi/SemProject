@@ -22,14 +22,18 @@ import hashlib
 import struct
 import sys
 import zlib
+from pathlib import Path
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding
 
 MAGIC = 0xDEADBEEF
 OFF_MAGIC = 0x1C
 OFF_SIZE = 0x20
 OFF_CRC = 0x24
+DEFAULT_KEY = Path(__file__).parent.parent / "tests/vectors/rsa_test_key.pem"
 
 
-def patch(path: str) -> None:
+def patch(path: str, key_path: Path = DEFAULT_KEY) -> None:
     with open(path, "rb") as f:
         buf = bytearray(f.read())
 
@@ -51,15 +55,23 @@ def patch(path: str) -> None:
     #    Stage 1 은 [base, base+size) 전체를 hash 하므로, CRC 필드까지 들어간
     #    최종 image 의 sha256 이 그대로 보드 출력과 일치해야 한다.
     sha = hashlib.sha256(bytes(buf)).hexdigest()
+    
+    # private key로 서명
+    with open(key_path, "rb") as f:
+        key=serialization.load_pem_private_key(f.read(), password=None)
+    signature=key.sign(bytes(buf), padding.PKCS1v15(),hashes.SHA256())
+    assert len(signature)==256, "RSA-2048 signature must be 256 bytes"
 
     with open(path, "wb") as f:
         f.write(buf)
+        f.write(signature)
 
     print(f"Patched: {path}")
     print(f"  size   = {img_size} (0x{img_size:08x}) @ offset 0x{OFF_SIZE:02x}")
     print(f"  magic  = 0x{MAGIC:08x} @ offset 0x{OFF_MAGIC:02x}")
     print(f"  crc32  = 0x{crc:08x} @ offset 0x{OFF_CRC:02x}")
     print(f"  sha256 = {sha}")
+    print(f"  signature = {signature[:16].hex()}... ({len(signature)} bytes) @ offset 0x{img_size:x}")
     print("           ^ expected '[Verify] SHA-256:' line on UART")
 
 
@@ -69,8 +81,9 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     ap.add_argument("image", help="path to stage2.bin (patched in-place)")
+    ap.add_argument("--key", default=str(DEFAULT_KEY), help="RSA private key PEM")
     args = ap.parse_args()
-    patch(args.image)
+    patch(args.image, Path(args.key))
 
 
 if __name__ == "__main__":

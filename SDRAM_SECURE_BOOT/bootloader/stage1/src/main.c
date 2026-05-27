@@ -5,6 +5,8 @@
 #include "crc32.h"
 #include "sha256.h"
 #include "bignum.h"
+#include "rsa.h"
+#include "embedded_pubkey.h"
 
 /**
  * Stage 1 immutable bootloader — Secure Boot.
@@ -146,6 +148,14 @@ static int Stage2_Verify(uint32_t base)
     UART1_SendString("[Verify] SHA-256: ");
     print_digest_hex(img_hash);
 
+    /*RSA-2048 PKCS#1 v1.5 서명 검증 - image 끝 256바이트 = signature*/
+    const uint8_t *signature=(const uint8_t*)(base+size);
+    if(!rsa_verify_pkcs1_v15_sha256(img_hash,signature,EMBEDDED_PUBKEY_MODULUS)){
+        UART1_SendString("[Verify] RSA signature FAIL\r\n");
+        return 0;
+    }
+
+    UART1_SendString("[Verify] RSA signature OK\r\n");
     return 1; /* 검증 통과 */
 }
 

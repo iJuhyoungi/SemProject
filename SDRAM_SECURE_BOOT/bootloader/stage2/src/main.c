@@ -1,6 +1,19 @@
 #include <stdint.h>
 #include "uart.h"
 #include "led.h"
+#include "bignum.h"
+#include "verify.h"
+#include "embedded_pubkey.h"
+
+#define APP_A_BASE  0x60048000u
+
+static void halt_on_fail(void){
+    LED_On();
+    __asm volatile("cpsid i");
+    while(1){
+        __asm volatile("wfi");
+    }
+}
 
 /**
  * Stage 2 — Secure Boot 의 검증 대상 image (demo payload).
@@ -27,11 +40,17 @@ int main(void)
     UART1_SendString("-----------------------------\r\n");
 
     LED_Init();
-    while(1) {
-        LED_On();
-        delay_loop(2000000);
-        LED_Off();
-        delay_loop(2000000);
+
+    UART1_SendString("[BL2] Stage 2 Verifying App A ...\r\n");
+    if(verify_image(APP_A_BASE, EMBEDDED_PUBKEY_MODULUS)){
+        UART1_SendString("[BL2] App A OK - jumping to 0x60048000\r\n");
+        jump_to_image(APP_A_BASE);
     }
+
+    UART1_SendString("[BL2] App A INVALID - halting\r\n");
+    halt_on_fail();
+
+    for (;;) { __asm("wfi"); }
+    return 0;
 
 }

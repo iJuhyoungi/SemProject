@@ -19,3 +19,4 @@ add_compile_options(
 include_directories(shared/include)
 
 add_subdirectory(bootloader)
+add_subdirectory(app)

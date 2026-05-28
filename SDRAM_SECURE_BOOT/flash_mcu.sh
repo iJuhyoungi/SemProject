@@ -5,7 +5,10 @@
 #   all        = chip erase + flash stage1 + stage2
 #   stage1     = Stage 1 (immutable verifier) 만
 #   stage2     = Stage 2 (검증 대상 image) 만
-#
+#   app_a      = App A (0x60048000)
+#   app_b      = App B (0x60088000)
+#   apps       = App A + App B
+
 # 메모리 맵:
 #   Stage 1  -> 0x60000000  (FCB + IVT + verify 코드, 24KB region)
 #   Stage 2  -> 0x60008000  (서명된 image, 256KB region)
@@ -42,11 +45,29 @@ flash_stage2() {
     echo ""
 }
 
+flash_app_a() {
+    echo "========================================"
+    echo " Flashing App A (0x60048000)"
+    echo "========================================"
+    pyocd flash build/app/app_a/app_a.bin $DEV --base-address 0x60048000
+    echo ""
+}
+
+flash_app_b() {
+    echo "========================================"
+    echo " Flashing App B (0x60088000)"
+    echo "========================================"
+    pyocd flash build/app/app_b/app_b.bin $DEV --base-address 0x60088000
+    echo ""
+}
+
 case "$TARGET" in
     all)
         erase_chip
         flash_stage1
         flash_stage2
+        flash_app_a
+        flash_app_b
         ;;
     stage1)
         flash_stage1
@@ -54,8 +75,12 @@ case "$TARGET" in
     stage2|boot)
         flash_stage2
         ;;
+    app_a)  flash_app_a ;;
+    app_b)  flash_app_b ;;
+    apps)   flash_app_a; flash_app_b ;;
+    
     *)
-        echo "usage: $0 [all|stage1|stage2]   (default: all)"
+        echo "usage: $0 [all|stage1|stage2|app_a|app_b|apps]   (default: all)"
         exit 1
         ;;
 esac

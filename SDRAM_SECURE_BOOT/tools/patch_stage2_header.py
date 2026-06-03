@@ -30,10 +30,11 @@ MAGIC = 0xDEADBEEF
 OFF_MAGIC = 0x1C
 OFF_SIZE = 0x20
 OFF_CRC = 0x24
+OFF_VERSION = 0x28
 DEFAULT_KEY = Path(__file__).parent.parent / "tests/vectors/rsa_test_key.pem"
 
 
-def patch(path: str, key_path: Path = DEFAULT_KEY) -> None:
+def patch(path: str, key_path: Path = DEFAULT_KEY, version: int = 0) -> None:
     with open(path, "rb") as f:
         buf = bytearray(f.read())
 
@@ -41,12 +42,14 @@ def patch(path: str, key_path: Path = DEFAULT_KEY) -> None:
     if img_size < OFF_CRC + 4:
         sys.exit(f"image too small ({img_size} bytes) — header slots not reachable")
 
-    # 1. magic + size
+    # 1. magic + size + version
     struct.pack_into("<I", buf, OFF_MAGIC, MAGIC)
     struct.pack_into("<I", buf, OFF_SIZE, img_size)
+    struct.pack_into("<I", buf, OFF_VERSION, version)
 
     # 2. CRC32 — CRC 필드 자체는 0 으로 두고 계산
     #    (C 측 CRC32_ComputeWithSkip 가 이 영역을 0 으로 본 채 계산하는 것과 일치)
+    #    CRC를 계산할 때 이제 Version 필드도 포함되므로, Stage 1 의 CRC 체크는 Version 필드도 보호하게 됨.
     buf[OFF_CRC:OFF_CRC + 4] = b"\x00\x00\x00\x00"
     crc = zlib.crc32(bytes(buf)) & 0xFFFFFFFF
     struct.pack_into("<I", buf, OFF_CRC, crc)
@@ -71,6 +74,7 @@ def patch(path: str, key_path: Path = DEFAULT_KEY) -> None:
     print(f"  magic  = 0x{MAGIC:08x} @ offset 0x{OFF_MAGIC:02x}")
     print(f"  crc32  = 0x{crc:08x} @ offset 0x{OFF_CRC:02x}")
     print(f"  sha256 = {sha}")
+    print(f"  version  = {version} (0x{version:08x}) @ offset 0x{OFF_VERSION:02x}")
     print(f"  signature = {signature[:16].hex()}... ({len(signature)} bytes) @ offset 0x{img_size:x}")
     print("           ^ expected '[Verify] SHA-256:' line on UART")
 
@@ -82,8 +86,9 @@ def main():
     )
     ap.add_argument("image", help="path to stage2.bin (patched in-place)")
     ap.add_argument("--key", default=str(DEFAULT_KEY), help="RSA private key PEM")
+    ap.add_argument("--version", type=int, default=0, help="image version (LE uint32, default 0)")
     args = ap.parse_args()
-    patch(args.image, Path(args.key))
+    patch(args.image, Path(args.key), version=args.version)
 
 
 if __name__ == "__main__":

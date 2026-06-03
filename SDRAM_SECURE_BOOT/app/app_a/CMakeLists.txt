@@ -26,6 +26,6 @@ target_link_options(${TARGET}.elf PRIVATE
 # Post-build: objcopy + RSA 서명 (Stage 2 와 동일 — C-2 에서 검증)
 add_custom_command(TARGET ${TARGET}.elf POST_BUILD
     COMMAND ${CMAKE_OBJCOPY} -O binary ${TARGET}.elf ${TARGET}.bin
-    COMMAND python3 ${CMAKE_SOURCE_DIR}/tools/patch_stage2_header.py ${TARGET}.bin
-    COMMENT "Building 🛡️  ${TARGET}.bin + signing with RSA-2048 (App A)"
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/tools/patch_stage2_header.py ${TARGET}.bin --version 1
+    COMMENT "Building 🛡️  ${TARGET}.bin + signing with RSA-2048 (App A, v1)"
 )

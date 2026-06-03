@@ -61,6 +61,19 @@ flash_app_b() {
     echo ""
 }
 
+flash_metadata() {
+    echo "========================================"
+    echo " Flashing Metadata (0x600C8000)"
+    echo "========================================"
+    if [ ! -f build/metadata.bin ]; then
+        echo "build/metadata.bin not found. Generate with:"
+        echo "  python3 tools/set_min_version.py --version N"
+        return 1
+    fi
+    pyocd flash build/metadata.bin $DEV --base-address 0x600C8000
+    echo ""
+}
+
 case "$TARGET" in
     all)
         erase_chip
@@ -68,6 +81,7 @@ case "$TARGET" in
         flash_stage2
         flash_app_a
         flash_app_b
+        flash_metadata
         ;;
     stage1)
         flash_stage1
@@ -78,9 +92,9 @@ case "$TARGET" in
     app_a)  flash_app_a ;;
     app_b)  flash_app_b ;;
     apps)   flash_app_a; flash_app_b ;;
-    
+    metadata)   flash_metadata ;;
     *)
-        echo "usage: $0 [all|stage1|stage2|app_a|app_b|apps]   (default: all)"
+        echo "usage: $0 [all|stage1|stage2|app_a|app_b|apps|metadata]   (default: all)"
         exit 1
         ;;
 esac

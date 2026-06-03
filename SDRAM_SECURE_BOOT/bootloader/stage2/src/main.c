@@ -5,29 +5,21 @@
 #include "verify.h"
 #include "embedded_pubkey.h"
 
-#define APP_A_BASE  0x60048000u
-#define APP_B_BASE  0x60088000u
+#define APP_A_BASE 0x60048000u
+#define APP_B_BASE 0x60088000u
 
-static void halt_on_fail(void){
+static void halt_on_fail(void)
+{
     LED_On();
     __asm volatile("cpsid i");
-    while(1){
+    while (1)
+    {
         __asm volatile("wfi");
     }
 }
 
-/**
- * Stage 2 — Secure Boot 의 검증 대상 image (demo payload).
- *
- * 이 binary 는 "Stage 1 이 무엇을 검증하는가" 의 대상일 뿐, 하는 일은
- * 최소화한다. 호스트 서명 도구(Step 3)가 이 .bin 을 서명해 첨부하고,
- * Stage 1 이 검증 통과 시 여기로 점프한다.
- *
- * LED 깜빡임 = 정상 실행 신호 (Stage 1 halt 시의 상시 점등과 구분).
- */
-
 static void delay_loop(uint32_t count)
-{ 
+{
     for (volatile uint32_t i = 0; i < count; ++i)
     {
         __asm("nop");
@@ -36,11 +28,14 @@ static void delay_loop(uint32_t count)
 
 static void print_hex32(uint32_t v)
 {
-    static const char hex[]="0123456789abcdef";
-    char buf[2]={0,};
+    static const char hex[] = "0123456789abcdef";
+    char buf[2] = {
+        0,
+    };
     UART1_SendString("0x");
-    for(int i=7;i>=0;--i){
-        buf[0]=hex[(v>>(i*4))&0xF];
+    for (int i = 7; i >= 0; --i)
+    {
+        buf[0] = hex[(v >> (i * 4)) & 0xF];
         UART1_SendString(buf);
     }
 }
@@ -48,7 +43,16 @@ static void print_hex32(uint32_t v)
 // image header의 version 슬롯을 읽는 코드, erased flash면 0xFFFFFFFF
 static uint32_t read_version(uint32_t base)
 {
-    return *(volatile uint32_t*)(base+IMG_VERSION_OFFSET);
+    return *(volatile uint32_t *)(base + IMG_VERSION_OFFSET);
+}
+
+/*
+ * Rollback metadata sector 의 min_acceptable_version 읽기.
+ */
+static uint32_t read_min_version(void)
+{
+    uint32_t v = *(volatile uint32_t *)(METADATA_BASE + METADATA_MIN_VER_OFF);
+    return (v == 0xFFFFFFFFu) ? 0u : v;
 }
 
 int main(void)
@@ -60,8 +64,8 @@ int main(void)
     LED_Init();
 
     /*A/B version check*/
-    uint32_t va=read_version(APP_A_BASE);
-    uint32_t vb=read_version(APP_B_BASE);
+    uint32_t va = read_version(APP_A_BASE);
+    uint32_t vb = read_version(APP_B_BASE);
     UART1_SendString("[BL2] App A version: ");
     print_hex32(va);
     UART1_SendString("\r\n");
@@ -70,46 +74,78 @@ int main(void)
     print_hex32(vb);
     UART1_SendString("\r\n");
 
+    uint32_t min_ver = read_min_version();
+    UART1_SendString("[BL2] Min acceptable version = ");
+    print_hex32(min_ver);
+    UART1_SendString("\r\n");
+
     /*priority check*/
     uint32_t primary, secondary;
+    uint32_t prim_ver, sec_ver;
     const char *prim_name, *sec_name;
-    if(vb>va){
-        primary=APP_B_BASE;
-        prim_name="App B";
-        secondary=APP_A_BASE;
-        sec_name="App A";
-    }else{
-        primary=APP_A_BASE;
-        prim_name="App A";
-        secondary=APP_B_BASE;
-        sec_name="App B";
+    if (vb > va)
+    {
+        primary = APP_B_BASE;
+        prim_name = "App B";
+        prim_ver = vb;
+        secondary = APP_A_BASE;
+        sec_name = "App A";
+        sec_ver = va;
+    }
+    else
+    {
+        primary = APP_A_BASE;
+        prim_name = "App A";
+        prim_ver = va;
+        secondary = APP_B_BASE;
+        sec_name = "App B";
+        sec_ver = vb;
     }
 
-    /* primary 시도 */
-    UART1_SendString("[BL2] Trying "); UART1_SendString(prim_name);
-    UART1_SendString(" (higher version) ...\r\n");
-    if (verify_image(primary, EMBEDDED_PUBKEY_MODULUS)) {
-        UART1_SendString("[BL2] "); UART1_SendString(prim_name);
+    /* primary 시도 — version 검사 + verify */
+    UART1_SendString("[BL2] Trying ");
+    UART1_SendString(prim_name);
+    UART1_SendString(" ...\r\n");
+    if (prim_ver < min_ver)
+    {
+        UART1_SendString("[BL2] ");
+        UART1_SendString(prim_name);
+        UART1_SendString(" REJECTED - version below min (downgrade attempt)\r\n");
+    }
+    else if (verify_image(primary, EMBEDDED_PUBKEY_MODULUS))
+    {
+        UART1_SendString("[BL2] ");
+        UART1_SendString(prim_name);
         UART1_SendString(" OK - jumping\r\n");
         jump_to_image(primary);
     }
 
-    /* fallback */
-    UART1_SendString("[BL2] "); UART1_SendString(prim_name);
-    UART1_SendString(" FAIL - falling back to "); UART1_SendString(sec_name);
+    /* secondary fallback — 동일 검사 */
+    UART1_SendString("[BL2] Falling back to ");
+    UART1_SendString(sec_name);
     UART1_SendString(" ...\r\n");
-    if (verify_image(secondary, EMBEDDED_PUBKEY_MODULUS)) {
-        UART1_SendString("[BL2] "); UART1_SendString(sec_name);
+    if (sec_ver < min_ver)
+    {
+        UART1_SendString("[BL2] ");
+        UART1_SendString(sec_name);
+        UART1_SendString(" REJECTED - version below min\r\n");
+    }
+    else if (verify_image(secondary, EMBEDDED_PUBKEY_MODULUS))
+    {
+        UART1_SendString("[BL2] ");
+        UART1_SendString(sec_name);
         UART1_SendString(" OK - jumping\r\n");
         jump_to_image(secondary);
     }
 
-    /* 둘 다 FAIL */ 
-    UART1_SendString("[BL2] Both A and B INVALID - halting\r\n");
+    /* 둘 다 FAIL */
+    UART1_SendString("[BL2] No valid image - halting\r\n");
 
     halt_on_fail();
 
-    for (;;) { __asm("wfi"); }
+    for (;;)
+    {
+        __asm("wfi");
+    }
     return 0;
-
 }

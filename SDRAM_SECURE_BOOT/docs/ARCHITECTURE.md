@@ -49,6 +49,7 @@ Stage 1 은 작고 (24 KB) 변하지 않으며, 오직 "Stage 2 가 진짜인지
 | Boot header | `0x60000000` ~ `0x60001FFF` | 8 KB | FlexSPI config, IVT, boot data |
 | **Stage 1** | `0x60002000` ~ `0x60007FFF` | 24 KB | immutable verifier |
 | **Stage 2** | `0x60008000` ~ `0x60047FFF` | 256 KB | verified payload + signature |
+| **Metadata** | `0x600C8000` ~ `0x600C8FFF` | 4 KB | Rollback metadata — `[0x00]` `min_acceptable_version` (uint32 LE), 나머지 `0xFF` (C-5 에서 확장) |
 
 RAM (실행 시):
 | 영역 | 용도 |

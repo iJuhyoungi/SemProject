@@ -3,6 +3,7 @@
 #include "led.h"
 #include "bignum.h"
 #include "verify.h"
+#include "metadata.h"
 #include "embedded_pubkey.h"
 
 #define APP_A_BASE 0x60048000u
@@ -46,14 +47,14 @@ static uint32_t read_version(uint32_t base)
     return *(volatile uint32_t *)(base + IMG_VERSION_OFFSET);
 }
 
-/*
- * Rollback metadata sector 의 min_acceptable_version 읽기.
- */
-static uint32_t read_min_version(void)
-{
-    uint32_t v = *(volatile uint32_t *)(METADATA_BASE + METADATA_MIN_VER_OFF);
-    return (v == 0xFFFFFFFFu) ? 0u : v;
-}
+// /*
+//  * Rollback metadata sector 의 min_acceptable_version 읽기.
+//  */
+// static uint32_t read_min_version(void)
+// {
+//     uint32_t v = *(volatile uint32_t *)(METADATA_BASE + METADATA_MIN_VER_OFF);
+//     return (v == 0xFFFFFFFFu) ? 0u : v;
+// }
 
 int main(void)
 {
@@ -74,7 +75,17 @@ int main(void)
     print_hex32(vb);
     UART1_SendString("\r\n");
 
-    uint32_t min_ver = read_min_version();
+    metadata_t md;
+    if (!metadata_read_active(&md))
+    {
+        UART1_SendString("[BL2] Metadata both invalid - halting (fail-safe)\r\n");
+        halt_on_fail();
+    }
+
+    uint32_t min_ver = md.min_acceptable_version;
+    UART1_SendString("[BL2] Metadata seq = ");
+    print_hex32(md.sequence_number);
+    UART1_SendString("\r\n");
     UART1_SendString("[BL2] Min acceptable version = ");
     print_hex32(min_ver);
     UART1_SendString("\r\n");

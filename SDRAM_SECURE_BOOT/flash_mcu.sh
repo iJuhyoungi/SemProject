@@ -74,6 +74,33 @@ flash_metadata() {
     echo ""
 }
 
+flash_metadata_primary() {
+    echo "========================================"
+    echo " Flashing Metadata Primary (0x600C8000)"
+    echo "========================================"
+    if [ ! -f build/metadata.bin ]; then
+        echo "build/metadata.bin not found. Generate with:"
+        echo "  python3 tools/set_metadata.py --seq N --min-version M"
+        return 1
+    fi
+    pyocd flash build/metadata.bin $DEV --base-address 0x600C8000
+    echo ""
+}
+
+flash_metadata_backup() {
+    echo "========================================"
+    echo " Flashing Metadata Backup (0x600C9000)"
+    echo "========================================"
+    if [ ! -f build/metadata.bin ]; then
+        echo "build/metadata.bin not found"
+        return 1
+    fi
+    pyocd flash build/metadata.bin $DEV --base-address 0x600C9000
+    echo ""
+}
+
+
+
 case "$TARGET" in
     all)
         erase_chip
@@ -92,7 +119,10 @@ case "$TARGET" in
     app_a)  flash_app_a ;;
     app_b)  flash_app_b ;;
     apps)   flash_app_a; flash_app_b ;;
-    metadata)   flash_metadata ;;
+    metadata_primary)  flash_metadata_primary ;;
+    metadata_backup)   flash_metadata_backup ;;
+    metadata)          flash_metadata_primary; flash_metadata_backup ;;   # 둘 다 (초기 setup)
+
     *)
         echo "usage: $0 [all|stage1|stage2|app_a|app_b|apps|metadata]   (default: all)"
         exit 1

@@ -4,15 +4,15 @@
 #include <stdint.h>
 #include "bignum.h"
 
-#define IMG_MAGIC_OFFSET        0x1Cu
-#define IMG_SIZE_OFFSET         0x20u
-#define IMG_CRC_OFFSET          0x24u
-#define IMG_VERSION_OFFSET      0x28u               // vector reserved 다음 슬롯, uint32 Little Endian
-#define IMG_MAGIC_VALUE         0xDEADBEEF
-#define IMG_SIZE_MIN            0x100u
-#define IMG_SIZE_MAX            0x40000u
-#define METADATA_BASE           0x600C8000u
-#define METADATA_MIN_VER_OFF    0x00u
+#define IMG_MAGIC_OFFSET 0x1Cu
+#define IMG_SIZE_OFFSET 0x20u
+#define IMG_CRC_OFFSET 0x24u
+#define IMG_VERSION_OFFSET 0x28u // vector reserved 다음 슬롯, uint32 Little Endian
+#define IMG_MAGIC_VALUE 0xDEADBEEF
+#define IMG_SIZE_MIN 0x100u
+#define IMG_SIZE_MAX 0x40000u
+// #define METADATA_BASE           0x600C8000u
+// #define METADATA_MIN_VER_OFF    0x00u
 
 /**
  * image 검증 : vector sanity -> magic -> size -> CRC32 -> SHA256 -> RSA-2048

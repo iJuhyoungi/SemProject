@@ -56,6 +56,21 @@ static uint32_t read_version(uint32_t base)
 //     return (v == 0xFFFFFFFFu) ? 0u : v;
 // }
 
+static const char *metadata_reason_str(metadata_reason_t r)
+{
+    switch (r)
+    {
+    case METADATA_OK:
+        return "OK";
+    case METADATA_BAD_MAGIC:
+        return "BAD_MAGIC";
+    case METADATA_BAD_SIGNATURE:
+        return "BAD_SIGNATURE";
+    default:
+        return "UNKNOWN";
+    }
+}
+
 int main(void)
 {
     UART1_SendString("\r\n-----------------------------\r\n");
@@ -76,11 +91,27 @@ int main(void)
     UART1_SendString("\r\n");
 
     metadata_t md;
-    if (!metadata_read_active(&md))
+    metadata_reason_t p_reason, b_reason;
+    int ok = metadata_read_active(&md, &p_reason, &b_reason);
+
+    UART1_SendString("[BL2] Metadata Primary: ");
+    UART1_SendString(metadata_reason_str(p_reason));
+    UART1_SendString("\r\n");
+    UART1_SendString("[BL2] Metadata Backup:  ");
+    UART1_SendString(metadata_reason_str(b_reason));
+    UART1_SendString("\r\n");
+
+    if (!ok)
     {
         UART1_SendString("[BL2] Metadata both invalid - halting (fail-safe)\r\n");
         halt_on_fail();
     }
+
+    // if (!metadata_read_active(&md))
+    // {
+    //     UART1_SendString("[BL2] Metadata both invalid - halting (fail-safe)\r\n");
+    //     halt_on_fail();
+    // }
 
     uint32_t min_ver = md.min_acceptable_version;
     UART1_SendString("[BL2] Metadata seq = ");

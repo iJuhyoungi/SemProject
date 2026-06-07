@@ -1,132 +1,20 @@
 #!/bin/bash
+set -e   # 에러 시 즉시 중단
 
-# Usage: ./flash_mcu.sh [target]
-#   (no arg)   = all (default)
-#   all        = chip erase + flash stage1 + stage2
-#   stage1     = Stage 1 (immutable verifier) 만
-#   stage2     = Stage 2 (검증 대상 image) 만
-#   app_a      = App A (0x60048000)
-#   app_b      = App B (0x60088000)
-#   apps       = App A + App B
-
-# 메모리 맵:
-#   Stage 1  -> 0x60000000  (FCB + IVT + verify 코드, 24KB region)
-#   Stage 2  -> 0x60008000  (서명된 image, 256KB region)
-
-TARGET="${1:-all}"
-
-# pyOCD builtin target. pack target (mimxrt1021dag5a) 은 0.43.1 의 NXP CMSIS
-# Pack debug sequence 에 unaligned read AssertionError 가 있어 fail. builtin 우회.
+# pyOCD builtin target. pack target(mimxrt1021dag5a)은 0.43.1 NXP CMSIS Pack
+# debug sequence 의 unaligned read AssertionError 로 fail → builtin 우회.
 DEV="-t mimxrt1020"
+BIN="build/rt1020_peripheral.bin"
 
-erase_chip() {
-    echo "========================================"
-    echo " 1. Erasing entire Flash Memory..."
-    echo "========================================"
-    pyocd erase $DEV --chip
-    echo ""
-}
+if [ ! -f "$BIN" ]; then
+    echo "❌ $BIN 없음. 먼저 ./build.sh 로 빌드하세요."
+    exit 1
+fi
 
-flash_stage1() {
-    echo "========================================"
-    echo " Flashing Stage 1 (0x60000000)"
-    echo "========================================"
-    # Stage 1 immutable. FCB + IVT + verify 코드. 0x60000000 부터.
-    pyocd flash build/bootloader/stage1/bootloader_stage1.bin $DEV --base-address 0x60000000
-    echo ""
-}
+echo "==== 1) Chip Erase ===="
+pyocd erase $DEV --chip
 
-flash_stage2() {
-    echo "========================================"
-    echo " Flashing Stage 2 (0x60008000)"
-    echo "========================================"
-    # Stage 2 = Stage 1 이 검증 후 점프하는 대상. 0x60008000 부터.
-    pyocd flash build/bootloader/stage2/bootloader_stage2.bin $DEV --base-address 0x60008000
-    echo ""
-}
-
-flash_app_a() {
-    echo "========================================"
-    echo " Flashing App A (0x60048000)"
-    echo "========================================"
-    pyocd flash build/app/app_a/app_a.bin $DEV --base-address 0x60048000
-    echo ""
-}
-
-flash_app_b() {
-    echo "========================================"
-    echo " Flashing App B (0x60088000)"
-    echo "========================================"
-    pyocd flash build/app/app_b/app_b.bin $DEV --base-address 0x60088000
-    echo ""
-}
-
-flash_metadata() {
-    echo "========================================"
-    echo " Flashing Metadata (0x600C8000)"
-    echo "========================================"
-    if [ ! -f build/metadata.bin ]; then
-        echo "build/metadata.bin not found. Generate with:"
-        echo "  python3 tools/set_min_version.py --version N"
-        return 1
-    fi
-    pyocd flash build/metadata.bin $DEV --base-address 0x600C8000
-    echo ""
-}
-
-flash_metadata_primary() {
-    echo "========================================"
-    echo " Flashing Metadata Primary (0x600C8000)"
-    echo "========================================"
-    if [ ! -f build/metadata.bin ]; then
-        echo "build/metadata.bin not found. Generate with:"
-        echo "  python3 tools/set_metadata.py --seq N --min-version M"
-        return 1
-    fi
-    pyocd flash build/metadata.bin $DEV --base-address 0x600C8000
-    echo ""
-}
-
-flash_metadata_backup() {
-    echo "========================================"
-    echo " Flashing Metadata Backup (0x600C9000)"
-    echo "========================================"
-    if [ ! -f build/metadata.bin ]; then
-        echo "build/metadata.bin not found"
-        return 1
-    fi
-    pyocd flash build/metadata.bin $DEV --base-address 0x600C9000
-    echo ""
-}
-
-
-
-case "$TARGET" in
-    all)
-        erase_chip
-        flash_stage1
-        flash_stage2
-        flash_app_a
-        flash_app_b
-        flash_metadata
-        ;;
-    stage1)
-        flash_stage1
-        ;;
-    stage2|boot)
-        flash_stage2
-        ;;
-    app_a)  flash_app_a ;;
-    app_b)  flash_app_b ;;
-    apps)   flash_app_a; flash_app_b ;;
-    metadata_primary)  flash_metadata_primary ;;
-    metadata_backup)   flash_metadata_backup ;;
-    metadata)          flash_metadata_primary; flash_metadata_backup ;;   # 둘 다 (초기 setup)
-
-    *)
-        echo "usage: $0 [all|stage1|stage2|app_a|app_b|apps|metadata]   (default: all)"
-        exit 1
-        ;;
-esac
-
-echo "✅ All done! Please reset the board."
+echo "==== 2) Flash $BIN @ 0x60000000 ===="
+# objcopy 가 최저 LMA(FCB, 0x60000000)부터 한 덩어리로 뜬 raw 이미지.
+# FCB + IVT + .text 가 이미 한 blob 이므로 0x60000000 에 통째로 굽는다.
+pyocd flash "$BIN" $DEV --base-address 0x60000000

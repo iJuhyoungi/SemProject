@@ -17,6 +17,12 @@
 #define IOMUXC_SW_MUX_CTL_PAD_GPIO_AD_B0_05     (*(volatile uint32_t *)0x401F80D0) // LED
 #define IOMUXC_SW_MUX_CTL_PAD_GPIO_AD_B0_06     (*(volatile uint32_t *)0x401F80D4) // UART1 TX
 #define IOMUXC_SW_MUX_CTL_PAD_GPIO_AD_B0_07     (*(volatile uint32_t *)0x401F80D8) // UART1 RX
+/* IOMUXC (RM Ch.11), base 0x401F_8000 — LPSPI1 핀 (전부 ALT1) */
+#define IOMUXC_SW_MUX_CTL_PAD_GPIO_AD_B0_10     (*(volatile uint32_t *)0x401F80E4) // LPSPI1 SCK
+#define IOMUXC_SW_MUX_CTL_PAD_GPIO_AD_B0_11     (*(volatile uint32_t *)0x401F80E8) // LPSPI1 PCS0
+#define IOMUXC_SW_MUX_CTL_PAD_GPIO_AD_B0_12     (*(volatile uint32_t *)0x401F80EC) // LPSPI1 SDO
+#define IOMUXC_SW_MUX_CTL_PAD_GPIO_AD_B0_13     (*(volatile uint32_t *)0x401F80F0) // LPSPI1 SDI
+#define IOMUXC_SW_PAD_CTL_PAD_GPIO_SD_B0_02     (*(volatile uint32_t *)0x401F82B8) // LPSPI1 SDI 선택 입력 레지스터
 
 /* [GPIO1] 범용 입출력 모듈 */
 #define GPIO1_DR                                (*(volatile uint32_t *)0x401B8000)
@@ -116,5 +122,18 @@
  */
 
 #define IOMUXC_SW_MUX_CTL_PAD_GPIO_EMC_00       (0x401F8014)
+
+
+#define LPSPI1_BASE         0x40394000u
+#define LPSPI1_VERID        (*(volatile uint32_t *)(LPSPI1_BASE + 0x000))
+#define LPSPI1_CR           (*(volatile uint32_t *)(LPSPI1_BASE+0x10))
+#define LPSPI1_SR           (*(volatile uint32_t *)(LPSPI1_BASE+0x14))
+#define LPSPI1_CFGR1        (*(volatile uint32_t *)(LPSPI1_BASE+0x24))
+#define LPSPI1_CCR          (*(volatile uint32_t *)(LPSPI1_BASE+0x40))
+#define LPSPI1_FCR          (*(volatile uint32_t *)(LPSPI1_BASE+0x58))
+#define LPSPI1_FSR          (*(volatile uint32_t *)(LPSPI1_BASE+0x5C))
+#define LPSPI1_TCR          (*(volatile uint32_t *)(LPSPI1_BASE+0x60))
+#define LPSPI1_TDR          (*(volatile uint32_t *)(LPSPI1_BASE+0x64))
+#define LPSPI1_RDR          (*(volatile uint32_t *)(LPSPI1_BASE+0x74))
 
 #endif // RT1020_REGS_H

@@ -245,3 +245,36 @@ TCF(SR bit10) wait       # 전송 완료 (bounded timeout 권장)
 - `FSR` TX count(=bits[4:0]) 가 전송 후 0 으로 drain
 - timeout 없이 통과 → 송신 경로 OK. (파형 확인은 SCK/SOUT 가 unpopulated 라 생략, 플래그로 대체)
 - RX 는 P-1f device 연결 시 검증.
+
+---
+
+# P-2: TX FIFO burst (watermark) — RM 43.5.1.3/13/14
+
+## 개념: 왜 burst 가 빠른가
+- **P-1e (per-byte)**: TDR 1개 push → TCF(완료) 대기 → 반복. 매 byte 마다 SCK 가 멈추고 CPU 가 polling.
+- **P-2 (burst)**: TX FIFO(16 word)에 미리 여러 byte 를 쌓아둠 → shift register 가 쉬지 않고 연속 출력.
+  CPU 는 FIFO 에 자리 날 때만 채우면 됨 → SCK 가 연속으로 흐름.
+
+## PARAM (0x04, RO) — FIFO 깊이
+- TXFIFO[7:0] / RXFIFO[15:8] : 깊이 = 2^값. reset 0x040404 → **각 2⁴=16 word**. PCS수[23:16]=4.
+- (코드에서 읽어 확인 권장: `(PARAM & 0xFF)` = TXFIFO 지수)
+
+## FCR (0x58) watermark — "언제 채우라고 알릴지"
+- TXWATER[3:0]: **SR[TDF] 는 TX FIFO count ≤ TXWATER 일 때 set.**
+  - TXWATER=0 → FIFO 빌 때만 TDF (burst 효과 없음, P-1e 와 동일)
+  - TXWATER=N → count ≤ N 으로 떨어지면 TDF → "다시 채워라" (IRQ/DMA refill trigger 의 핵심, P-3 로 직결)
+- RXWATER[19:16]: SR[RDF] 는 RX FIFO count > RXWATER 일 때 set.
+
+## FSR (0x5C, RO) — 실시간 점유량 (burst 눈으로 보기)
+- TXCOUNT[4:0] / RXCOUNT[20:16]. 채운 직후 읽으면 여러 개 쌓여 있음(>1) = burst 증거. 완료 후 0.
+
+## 송신 burst 시퀀스 (polled, TX-only)
+```
+TCR = 0x80007 (한 번)            # 8bit, RXMSK
+for each byte:
+    while ((FSR & 0x1F) >= 16) ; # FIFO 가득이면 대기 (자리 날 때까지)
+    TDR = byte                   # push
+TCF 대기                          # 마지막까지 완료
+```
+- 검증: 채운 직후 `FSR&0x1F` 가 >1 (여러 개 큐잉됨) → 완료 후 0. + TCF set.
+- per-byte 면 FSR 가 항상 ≤1. burst 면 push 속도 > shift 속도라 FIFO 에 쌓임.

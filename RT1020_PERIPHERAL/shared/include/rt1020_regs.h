@@ -135,5 +135,6 @@
 #define LPSPI1_TCR          (*(volatile uint32_t *)(LPSPI1_BASE+0x60))
 #define LPSPI1_TDR          (*(volatile uint32_t *)(LPSPI1_BASE+0x64))
 #define LPSPI1_RDR          (*(volatile uint32_t *)(LPSPI1_BASE+0x74))
+#define LPSPI1_PARAM        (*(volatile uint32_t *)(LPSPI1_BASE+0x04))
 
 #endif // RT1020_REGS_H

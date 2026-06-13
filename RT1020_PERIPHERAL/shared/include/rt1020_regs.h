@@ -58,6 +58,7 @@
 
 /* [NVIC] Nested Vectored Interrupt Controller */
 #define NVIC_ISER0                              (*(volatile uint32_t *)0xE000E100) // 인터럽트 허용 레지스터 0
+#define NVIC_ISER1                              (*(volatile uint32_t *)0xE000E104) // NVIC (ARM Cortex-M7) — IRQ 32~63 set-enable
 #define NVIC_ICER0                              (*(volatile uint32_t *)0xE000E180) // 인터럽트 금지 레지스터 0
 #define NVIC_ICPR0                              (*(volatile uint32_t *)0xE000E280) // 인터럽트 클리어 레지스터 0
 #define SYST_CSR                                (*(volatile uint32_t *)0xE000E010) // SysTick 제어 및 상태 레지스터
@@ -91,8 +92,8 @@
 
 /* 🚀 ARM Cortex-M7 데이터 워치포인트 및 추적(DWT) 레지스터 
  * (CPU 클럭 사이클을 1클럭 단위로 정확하게 셀 수 있는 하드웨어 타이머) */
-#define CoreDebug_DEMCR (*(volatile uint32_t *)0xE000EDFC)
-#define DWT_CTRL        (*(volatile uint32_t *)0xE0001000)
+#define CM_DEMCR (*(volatile uint32_t *)0xE000EDFC)                 // bit24 TRCENA
+#define DWT_CTRL        (*(volatile uint32_t *)0xE0001000)          // bit0 CYCCNTENA
 #define DWT_CYCCNT      (*(volatile uint32_t *)0xE0001004)
 
 #define EDMA_BASE 0x400E8000
@@ -128,6 +129,7 @@
 #define LPSPI1_VERID        (*(volatile uint32_t *)(LPSPI1_BASE + 0x000))
 #define LPSPI1_CR           (*(volatile uint32_t *)(LPSPI1_BASE+0x10))
 #define LPSPI1_SR           (*(volatile uint32_t *)(LPSPI1_BASE+0x14))
+#define LPSPI1_IER          (*(volatile uint32_t *)(LPSPI1_BASE+0x18))
 #define LPSPI1_CFGR1        (*(volatile uint32_t *)(LPSPI1_BASE+0x24))
 #define LPSPI1_CCR          (*(volatile uint32_t *)(LPSPI1_BASE+0x40))
 #define LPSPI1_FCR          (*(volatile uint32_t *)(LPSPI1_BASE+0x58))

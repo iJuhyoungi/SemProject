@@ -3,6 +3,16 @@
 #include "led.h"
 #include "rt1020_regs.h"
 
+
+/**
+ * ISR과 main이 공유하기 때문에 반드시 volatile로 선언
+ */
+static volatile const uint8_t *g_tx_buf;
+static volatile uint32_t g_tx_len;
+static volatile uint32_t g_tx_idx;
+static volatile uint32_t g_tx_done;
+static volatile uint32_t g_irq_count;               // ISR이 몇 번 불렸는지 확인
+
 /* busy-wait */
 static void delay_busy(volatile uint32_t n)
 {
@@ -103,6 +113,53 @@ static int LPSPI1_Send_Buffer(const uint8_t *buf, uint32_t n, uint32_t *peak_out
     return (timeout == 0u) ? 1 : 0;
 }
 
+static void dwt_init(void)
+{
+    CM_DEMCR |= (1u << 24);         // TRCENA : DWT 모듈 enable
+    DWT_CYCCNT = 0u;
+    DWT_CTRL |= (1 << 0);           // CYCCNTENA : 사이클 count 시작
+}
+
+/**
+ * 인터럽트 기반 송신 시작, 즉시 리턴하고 전송은 ISR이 백그라운드로 진행
+ */
+static void LPSPI1_Send_IRQ(const uint8_t *buf, uint32_t n)
+{
+    g_tx_buf = buf;
+    g_tx_len = n;
+    g_tx_idx = 0;
+    g_tx_done = 0;
+    g_irq_count = 0;
+
+    LPSPI1_SR = (1u << 10);              // stale TCF clear
+    LPSPI1_TCR = (1u << 19) | (7u << 0); // 8bit, RXMSK(one time)
+
+    LPSPI1_IER = (1u << 0); // TDIE: TX FIFO가 watermark까지 비면 인터럽트 발생
+    NVIC_ISER1 = (1u << 0); // IRQ 32 enable(32/32=1, 32%32=0)
+}
+
+void LPSPI1_IRQHandler(void)
+{
+    g_irq_count++;
+
+    /* TDF(자리가 있음)가 enable되고 송신할 item이 남아 있는 동안 refill */
+    while ((LPSPI1_SR & (1u << 0)) && (g_tx_idx < g_tx_len))
+    {
+        LPSPI1_TDR = g_tx_buf[g_tx_idx++];
+    }
+
+    /**
+     * 다 보냈다면, TDF 인터럽트 disable
+     * TDF는 W1C가 아니라 FIFO가 empty 되면 지속적으로 enable되는 level 플래그
+     * disable되지 않으면 FIFO가 empty 되자마자 또 인터럽트가 발생하여 무한 인터럽트 issue 발생
+     */
+    if (g_tx_idx >= g_tx_len)
+    {
+        LPSPI1_IER = 0u;
+        g_tx_done = 1;
+    }
+}
+
 int main(void)
 {
     /* UART1은 startup의 IS_BOOTLOADER 분기가 이미 init 함 — 바로 출력 가능 */
@@ -158,6 +215,37 @@ int main(void)
     UART1_SendString("[PERI] LPSPI1 VERID = ");
     UART1_SendHex32(LPSPI1_VERID);
     UART1_SendString("\r\n");
+
+    dwt_init();
+
+    static uint8_t big[40];
+    for(uint32_t i=0;i<40;++i)big[i]=(uint8_t)i;
+
+    /*polling방식*/
+    DWT_CYCCNT=0u;
+    LPSPI1_Send_Buffer(big,16,&(uint32_t){0});      // 16개(tight버전 n<=16)
+    uint32_t cyc_poll=DWT_CYCCNT;
+
+    /*IRQ방식 - Kick-off만 하고 즉시 리턴*/
+    DWT_CYCCNT=0u;
+    LPSPI1_Send_IRQ(big,40);                        // 40개, 백그라운드 전송
+    uint32_t cyc_irq_kick=DWT_CYCCNT;               // main이 묶여있는 시간은 kick-off뿐
+
+    /*그 사이 main운 자유로우며, 일부러 다른 task를 하며 전송이 끝나는지 확인*/
+    uint32_t work=0;
+    while(!g_tx_done){                              // 전송과 병렬로 루프를 수행한 count
+        work++;
+    }
+    UART1_SendString("[PERI] poll cycles = ");
+    UART1_SendHex32(cyc_poll);
+    UART1_SendString("\r\n[PERI] irq kick cyc  = ");
+    UART1_SendHex32(cyc_irq_kick);
+    UART1_SendString("\r\n[PERI] irq count     = ");
+    UART1_SendHex32(g_irq_count);
+    UART1_SendString("\r\n[PERI] main work loops= ");
+    UART1_SendHex32(work);
+    UART1_SendString("\r\n");
+
 
     uint32_t beat = 0;
     while (1)

@@ -142,8 +142,7 @@ void LPSPI1_IRQHandler(void)
 {
     g_irq_count++;
 
-    /* TDF(자리가 있음)가 enable되고 송신할 item이 남아 있는 동안 refill */
-    while ((LPSPI1_SR & (1u << 0)) && (g_tx_idx < g_tx_len))
+    while (((LPSPI1_FSR & 0x1Fu) < 16u) && (g_tx_idx < g_tx_len))
     {
         LPSPI1_TDR = g_tx_buf[g_tx_idx++];
     }

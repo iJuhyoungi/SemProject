@@ -278,3 +278,65 @@ TCF 대기                          # 마지막까지 완료
 ```
 - 검증: 채운 직후 `FSR&0x1F` 가 >1 (여러 개 큐잉됨) → 완료 후 0. + TCF set.
 - per-byte 면 FSR 가 항상 ≤1. burst 면 push 속도 > shift 속도라 FIFO 에 쌓임.
+
+---
+
+# P-4a: DMA 지도 (RM Ch.5 DMAMUX + Ch.6 eDMA)
+
+## mental model — DMA "4명의 플레이어" (IRQ는 3관문, DMA는 4 player)
+1. **LPSPI DER (0x1C)** — LPSPI 가 "TX FIFO 비었어, 데이터 줘" DMA 요청 발생. `TDDE[0]`(TX), `RDDE[1]`(RX).
+2. **DMAMUX (0x400E_C000)** — 그 요청(소스번호)을 어느 DMA 채널에 연결할지. `CHCFG[ch]` = ENBL + SOURCE.
+3. **eDMA TCD (0x400E_8000)** — 채널에게 주는 "명령서": 어디서→어디로, 몇 byte, 한 번에 몇 개.
+4. **eDMA SERQ** — 그 채널의 요청 수신 enable (write channel number).
+
+## 데이터 흐름
+```
+buf(메모리) ──[eDMA 엔진]──► LPSPI1_TDR ──► TX FIFO ──► SOUT
+   트리거: LPSPI 가 FIFO 빌 때마다 DMA 요청 → eDMA 가 1 byte 옮김 → 반복
+   N개 다 옮기면 → 완료 인터럽트 1번 (전체에 1번!)
+   CPU: 설정만. byte 당 개입 0.  ← P-3 의 "byte/chunk 당 인터럽트" 마저 제거
+```
+
+## RM 맵 / 주소
+| 구성 | 챕터 | base / 위치 |
+|---|---|---|
+| DMAMUX | Ch.5 | `0x400E_C000`, `CHCFG[ch]` = base + 4*ch |
+| eDMA | Ch.6 | `0x400E_8000`, `SERQ` = base + 0x1B |
+| eDMA TCD[ch] | Ch.6 | base + `0x1000` + `0x20*ch` (채널0 = `0x400E_9000`) |
+| LPSPI DER | 43.5.1.7 | `LPSPI1_BASE + 0x1C`, TDDE[0] |
+| 요청 소스 번호 | Ch.4 Table | **LPSPI1 TX = 14**, RX = 13 / LPSPI3 TX=16,RX=15 |
+
+## TCD 레지스터 (채널0 기준, P-4b 에서 채울 "명령서")
+| off | 이름 | 폭 | TX(mem→TDR) 용 값 |
+|---|---|---|---|
+| 0x1000 | SADDR | 32 | `&buf` (source 시작) |
+| 0x1004 | SOFF | 16 | `1` (전송마다 source +1 byte) |
+| 0x1006 | ATTR | 16 | SSIZE=0,DSIZE=0 (8-bit) → `0x0000` |
+| 0x1008 | NBYTES_MLNO | 32 | `1` (minor loop = 요청당 1 byte) |
+| 0x100C | SLAST | 32 | `-N` 또는 0 (major 후 source 복귀) |
+| 0x1010 | DADDR | 32 | `&LPSPI1_TDR` (dest 고정) |
+| 0x1014 | DOFF | 16 | `0` (dest 안 움직임) |
+| 0x1016 | CITER | 16 | `N` (major loop = 총 byte 수) |
+| 0x1018 | DLASTSGA | 32 | `0` |
+| 0x101C | CSR | 16 | DREQ(완료시 자동 disable) + 선택 INTMAJOR(완료 IRQ) |
+| 0x101E | BITER | 16 | `N` (CITER 와 동일하게 초기화) |
+
+## 설정 순서 (P-4b)
+```
+1) (CCM) eDMA/DMAMUX 클럭 게이트 ON 확인 (CCGR, reset 0xFFFFFFFF 라 보통 이미 ON)
+2) TCD 채널0 채우기 (위 표)
+3) DMAMUX CHCFG[0] = ENBL | SOURCE(14)   ← LPSPI1 TX 요청을 채널0에
+4) LPSPI DER[TDDE]=1                      ← LPSPI 가 DMA 요청 내도록
+5) eDMA SERQ = 0                          ← 채널0 요청 수신 enable
+6) LPSPI 가 FIFO 비자마자 DMA 요청 → eDMA 자동 전송 → 완료 IRQ 1번
+```
+
+## 주의
+- **채널 0** 사용 (단순).
+- 버퍼는 **DTCM(캐시 안 됨)** 이라 cache 일관성 문제 없음. OCRAM/SDRAM 버퍼면 D-cache clean 필요.
+- 완료 검출: TCD_CSR[INTMAJOR] → eDMA 채널0 완료 인터럽트(별도 IRQ/벡터) 또는 polling DMA_INT 비트.
+
+## 계획
+- P-4a: 지도 ✅ (지금)
+- P-4b: TCD + DMAMUX + DER 설정 → DMA 로 버퍼 송신, BURST/TCF 로 검증
+- P-4c: 완료 인터럽트 + DWT 측정 (DMA 중 main 자유 + 인터럽트 1번 확인 → polling/IRQ/DMA 3단 비교 완성)

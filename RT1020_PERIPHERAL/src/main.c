@@ -13,6 +13,12 @@ static volatile uint32_t g_tx_idx;
 static volatile uint32_t g_tx_done;
 static volatile uint32_t g_irq_count;               // ISR이 몇 번 불렸는지 확인
 
+/**
+ * DMA 관련
+ */
+static volatile uint32_t g_dma_done;
+static volatile uint32_t g_dma_irq_count;
+
 /* busy-wait */
 static void delay_busy(volatile uint32_t n)
 {
@@ -159,6 +165,46 @@ void LPSPI1_IRQHandler(void)
     }
 }
 
+void DMA0_IRQHandler(void)
+{
+    g_dma_irq_count++;
+    EDMA_CINT = 0;              /* 채널0 INT 플래그 클리어, 만약 클리어 안하면 무한 인터럽트가 발생됨 */
+    g_dma_done = 1;
+}
+
+static void LPSPI1_Send_DMA(const uint8_t *buf, uint32_t n)
+{
+    g_dma_done = 0;
+    g_dma_irq_count = 0;
+
+    CCM_CCGR5 |= (3u << 6); // eDMA+DMAMUX 클럭 게이트 ON
+
+    /* TCD 채널0번 config */
+    EDMA_TCD0_SADDR = (uint32_t)buf;
+    EDMA_TCD0_SOFF = 1;      /* source +1 byte 단위 */
+    EDMA_TCD0_ATTR = 0x0000; /* 8-bit <-> 8-bit */
+    EDMA_TCD0_NBYTES = 1;    /* minor loop = 요청당 1 byte */
+    EDMA_TCD0_SLAST = 0;
+    EDMA_TCD0_DADDR = (uint32_t)&LPSPI1_TDR; /* dest = TDR (고정) */
+    EDMA_TCD0_DOFF = 0;
+    EDMA_TCD0_CITER = (uint16_t)n; /* major loop = n */
+    EDMA_TCD0_BITER = (uint16_t)n; /* 초기값 동일 */
+    EDMA_TCD0_DLASTSGA = 0;
+    EDMA_TCD0_CSR = (1u << 3) | (1u << 1); /* DREQ + INTMAJOR(완료 시 IRQ) ← 0x0A */
+
+    /* DMAMUX : LPSPI1 TX(소스 14)를 채널 0에 연결하고 enable 시킴 */
+    DMAMUX_CHCFG0 = (1u << 31) | 14u;
+
+    /* LPSPI : 프레임 명령과 TX DMA 요청을 enable 시킴 */
+    LPSPI1_SR = (1u << 10);              /* stale TCF clear */
+    LPSPI1_TCR = (1u << 19) | (7u << 0); /* 8bit, RXMSK */
+    LPSPI1_DER = (1u << 0);              /* TDDE: FIFO 비면 DMA 요청 */
+
+    NVIC_ISER0 = (1u << 0); /* DMA0=IRQ0 enable */
+    /* 채널0 요청 수신 ON = 전송 시작. 이후 CPU 개입 없이 eDMA 가 알아서 옮김. */
+    EDMA_SERQ = 0; /* 채널 번호는 0 */
+}
+
 int main(void)
 {
     /* UART1은 startup의 IS_BOOTLOADER 분기가 이미 init 함 — 바로 출력 가능 */
@@ -245,6 +291,33 @@ int main(void)
     UART1_SendHex32(work);
     UART1_SendString("\r\n");
 
+    UART1_SendString("[PERI] DMA send 40 bytes ...\r\n");
+    DWT_CYCCNT=0u;
+    LPSPI1_Send_DMA(big, 40);             /* big[40] 재사용 */
+    uint32_t cyc_dma_kick=DWT_CYCCNT;
+
+    uint32_t dma_work=0;
+    while(!g_dma_done){
+        dma_work++;
+    }
+
+      UART1_SendString("[PERI] dma kick cyc  = "); UART1_SendHex32(cyc_dma_kick);
+      UART1_SendString("\r\n[PERI] dma irq count= "); UART1_SendHex32(g_dma_irq_count);
+      UART1_SendString("\r\n[PERI] dma work loops="); UART1_SendHex32(dma_work);
+      UART1_SendString("\r\n");
+
+    /* DMA 메이저 루프 완료 대기 (CSR[DONE]=bit7) */
+    uint32_t to1 = 2000000u;
+    while (!(EDMA_TCD0_CSR & (1u << 7)) && --to1) { }
+
+    /* 마지막 byte 가 FIFO 에서 다 빠질 때까지 (TCF) */
+    uint32_t to2 = 2000000u;
+    while (!(LPSPI1_SR & (1u << 10)) && --to2) { }
+
+    UART1_SendString("[PERI] DMA CSR = ");
+    UART1_SendHex32(EDMA_TCD0_CSR);        /* DONE(bit7) set 기대 → 0x...80 류 */
+    UART1_SendString((to1 && to2) ? "\r\n[PERI] DMA OK\r\n"
+                                : "\r\n[PERI] DMA TIMEOUT\r\n");
 
     uint32_t beat = 0;
     while (1)

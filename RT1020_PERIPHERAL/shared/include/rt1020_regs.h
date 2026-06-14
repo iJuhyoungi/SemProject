@@ -8,10 +8,10 @@
 #define CCM_CBCMR                               (*(volatile uint32_t *)0x400FC018)
 #define CCM_CSCDR1                              (*(volatile uint32_t *)0x400FC024)
 #define CCM_CDHIPR                              (*(volatile uint32_t *)0x400FC048)
-#define CCM_CCGR1                               (*(volatile uint32_t *)0x400FC06C)
+#define CCM_CCGR1                               (*(volatile uint32_t *)0x400FC06C)  // LPSPI1~4, SEMC_EXSC, GPT1, LPUART4, GPIO1, CSU, GPIO5
 /* [CCM] 클럭 제어 모듈 추가 */
-#define CCM_CCGR3                               (*(volatile uint32_t *)0x400FC074) // SEMC 모듈 전원/클럭 활성화
-#define CCM_CCGR5                               (*(volatile uint32_t *)0x400FC07C)
+#define CCM_CCGR3                               (*(volatile uint32_t *)0x400FC074)  // SEMC 모듈 전원/클럭 활성화, LPUART5~6, AOI1, ENC1~2, PWM1~2 
+#define CCM_CCGR5                               (*(volatile uint32_t *)0x400FC07C)  // DMA + DMAMUX(CG3), FLEXSPI, TRNG, USDHC2, LPUART8, DCDC
 
 /* [IOMUXC] 핀 다중화 모듈 */
 #define IOMUXC_SW_MUX_CTL_PAD_GPIO_AD_B0_05     (*(volatile uint32_t *)0x401F80D0) // LED
@@ -101,12 +101,29 @@
 #define EDMA_ES   (*(volatile uint32_t *)(EDMA_BASE + 0x004)) /* Error Status */
 #define EDMA_ERQ  (*(volatile uint32_t *)(EDMA_BASE + 0x00C)) /* Enable Request */
 
+/* eDMA 채널0 TCD (= EDMA_BASE + 0x1000 = 0x400E9000) */
+#define EDMA_TCD0_BASE       (EDMA_BASE+0x1000)
+
+#define EDMA_TCD0_SADDR      (*(volatile uint32_t *)(EDMA_TCD0_BASE + 0x00))
+#define EDMA_TCD0_SOFF       (*(volatile uint16_t *)(EDMA_TCD0_BASE + 0x04))
+#define EDMA_TCD0_ATTR       (*(volatile uint16_t *)(EDMA_TCD0_BASE + 0x06))
+#define EDMA_TCD0_NBYTES     (*(volatile uint32_t *)(EDMA_TCD0_BASE + 0x08))
+#define EDMA_TCD0_SLAST      (*(volatile uint32_t *)(EDMA_TCD0_BASE + 0x0C))
+#define EDMA_TCD0_DADDR      (*(volatile uint32_t *)(EDMA_TCD0_BASE + 0x10))
+#define EDMA_TCD0_DOFF       (*(volatile uint16_t *)(EDMA_TCD0_BASE + 0x14))
+#define EDMA_TCD0_CITER      (*(volatile uint16_t *)(EDMA_TCD0_BASE + 0x16))
+#define EDMA_TCD0_DLASTSGA   (*(volatile uint32_t *)(EDMA_TCD0_BASE + 0x18))
+#define EDMA_TCD0_CSR        (*(volatile uint16_t *)(EDMA_TCD0_BASE + 0x1C))
+#define EDMA_TCD0_BITER      (*(volatile uint16_t *)(EDMA_TCD0_BASE + 0x1E))
+
 /* 🚀 진짜 NXP i.MX RT1020 eDMA 8-bit 제어 레지스터 주소 (TRM 검증 완료) */
-#define EDMA_CERQ (*(volatile uint8_t *)(EDMA_BASE + 0x01A))
-#define EDMA_SERQ (*(volatile uint8_t *)(EDMA_BASE + 0x01B))
-#define EDMA_CDNE (*(volatile uint8_t *)(EDMA_BASE + 0x01C)) // Clear DONE
-#define EDMA_SSRT (*(volatile uint8_t *)(EDMA_BASE + 0x01D)) // Set START
-#define EDMA_CERR (*(volatile uint8_t *)(EDMA_BASE + 0x01E)) // Clear ERROR
+#define EDMA_CERQ           (*(volatile uint8_t *)(EDMA_BASE + 0x01A))
+#define EDMA_SERQ           (*(volatile uint8_t *)(EDMA_BASE + 0x01B))
+#define EDMA_CDNE           (*(volatile uint8_t *)(EDMA_BASE + 0x01C))      // Clear DONE
+#define EDMA_SSRT           (*(volatile uint8_t *)(EDMA_BASE + 0x01D))      // Set START
+#define EDMA_CERR           (*(volatile uint8_t *)(EDMA_BASE + 0x01E))      // Clear ERROR
+#define EDMA_INT            (*(volatile uint32_t *)(EDMA_BASE + 0x024))     // 채널별 INT 플래그 (W1C)
+#define EDMA_CINT           (*(volatile uint8_t *)(EDMA_BASE + 0x01F))     // 채널번호 write = INT clear
 
 
 /* 🚀 DMAMUX (eDMA의 문지기) 베이스 주소 */
@@ -130,6 +147,7 @@
 #define LPSPI1_CR           (*(volatile uint32_t *)(LPSPI1_BASE+0x10))
 #define LPSPI1_SR           (*(volatile uint32_t *)(LPSPI1_BASE+0x14))
 #define LPSPI1_IER          (*(volatile uint32_t *)(LPSPI1_BASE+0x18))
+#define LPSPI1_DER          (*(volatile uint32_t *)(LPSPI1_BASE+0x1C))
 #define LPSPI1_CFGR1        (*(volatile uint32_t *)(LPSPI1_BASE+0x24))
 #define LPSPI1_CCR          (*(volatile uint32_t *)(LPSPI1_BASE+0x40))
 #define LPSPI1_FCR          (*(volatile uint32_t *)(LPSPI1_BASE+0x58))

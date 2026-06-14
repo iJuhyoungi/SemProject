@@ -45,6 +45,7 @@ void SysTick_Handler(void)      __attribute__((weak, alias("Default_Handler")));
 
 extern void LPUART1_IRQHandler(void);
 extern void LPSPI1_IRQHandler(void);            /* IRQ 32 → vector idx 48 */
+extern void DMA0_IRQHandler(void);              /* 추가 : IRQ 0 -> vector idx 16 */
 
 #define D_1  { .handler = Default_Handler }
 #define D_10 D_1, D_1, D_1, D_1, D_1, D_1, D_1, D_1, D_1, D_1
@@ -68,7 +69,9 @@ const vector_entry_t __VECTOR_TABLE[176] = {
     { .value = 0 },                      
     { .handler = PendSV_Handler },       
     { .handler = SysTick_Handler },      
-    D_10, D_10,                                  
+    { .handler = DMA0_IRQHandler },      
+    D_1, D_1, D_1, D_1, D_1, D_1, D_1, D_1, D_1, 
+    D_10,
     { .handler = LPUART1_IRQHandler },           
     D_1, D_1, D_1, D_1, D_1, D_1, D_1, D_1, D_1, 
     D_1, D_1,

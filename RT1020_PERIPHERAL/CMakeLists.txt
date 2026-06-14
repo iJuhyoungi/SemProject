@@ -14,10 +14,11 @@ add_compile_options(
 )   
 
 include_directories(shared/include)
+include_directories(include)            # 프로젝트 전용 헤더 (lpspi.h 등)
 
 set(TARGET rt1020_peripheral)
 
-# 진입 소스(src) + 공통 plumbing(shared). 아직 LPSPI 드라이버 없음.
+# 진입 소스(src) + 공통 plumbing(shared). src/lpspi.c 는 GLOB 로 자동 포함.
 file(GLOB SOURCES "src/*.c" "shared/src/*.c")
 add_executable(${TARGET}.elf ${SOURCES})
 

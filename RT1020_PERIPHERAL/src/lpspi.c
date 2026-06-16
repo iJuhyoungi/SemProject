@@ -183,3 +183,9 @@ void DMA0_IRQHandler(void)
     g_dma_irq_count++;
     g_dma_done = 1;
 }
+
+  void LPSPI1_Disable(void)
+  {
+      LPSPI1_CR = 0u;   /* MEN=0, 모듈 off */
+  }
+

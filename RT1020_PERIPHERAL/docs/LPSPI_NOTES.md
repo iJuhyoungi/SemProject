@@ -394,3 +394,40 @@ void DMA0_IRQHandler(void)
 ## 드라이버 분리 (리팩)
 - LPSPI/DMA 코드를 src/lpspi.c + include/lpspi.h 로 분리 (uart.c 와 동일 구조). main.c=데모 하네스.
 - 함정: main 에 옛 static 전역 잔존 → ISR(lpspi.c)와 main 이 서로 다른 변수를 봐서 hang. → 정의는 .c 1곳, extern 선언은 .h, 타 .c 는 include.
+
+---
+
+# P-5: AUTOSAR Spi Driver API (레벨1 — 가벼운 매핑)
+
+## 구조 — 2계층 파사드
+- Spi.c/Spi.h (AUTOSAR 표준 얼굴) → lpspi.c/lpspi.h (P-1~4 register 드라이버) 내부 호출.
+- lpspi.c 는 그대로, 위에 표준 API 만 씌움. narrative: "바닥부터 구현하고 표준 API 로 감쌌다".
+
+## API ↔ 우리 구현 매핑
+| AUTOSAR Spi | 동작 | 내부 호출 |
+|---|---|---|
+| Spi_Init(cfg) | 초기화 | (Mcu/Port 경유) Clock_Enable + Pin_Init + Master_Init |
+| Spi_DeInit() | 비활성화 | CR[MEN]=0 |
+| Spi_WriteIB(ch,buf,len) | 내부버퍼 적재 | 정적 TX 버퍼 copy |
+| Spi_SyncTransmit(seq) | 블로킹 송신 | Send_Buffer (polling) |
+| Spi_AsyncTransmit(seq) | 논블로킹 송신 | Send_IRQ 또는 Send_DMA |
+| Spi_SetAsyncMode(mode) | async 방식 선택 | IRQ ↔ DMA 토글 |
+| Spi_GetStatus() | 모듈 상태 | UNINIT/IDLE/BUSY |
+| Spi_GetSequenceResult(seq) | 전송 결과 | OK/PENDING (g_*_done) |
+- 포인트: P-1~4 의 polling/IRQ/DMA 세 구현이 이 API 하나로 통합.
+
+## 레벨1 축약 (정직 메모)
+- 정석 AUTOSAR Spi 는 Channel→Job→Sequence 3단 계층. LPSPI1 단일이라 "1 Sequence = 버퍼 1개 송신"으로 축약. 타입만 두고 값 단순화. 주석에 명시.
+
+## 표준 타입
+- Std_Types.h: Std_ReturnType, E_OK/E_NOT_OK
+- Spi.h: Spi_StatusType(UNINIT/IDLE/BUSY), Spi_SeqResultType(OK/PENDING/FAILED), Spi_AsyncModeType(INTERRUPT/DMA)
+
+## 파일
+- include/Std_Types.h, include/Spi.h, src/Spi.c (신규) + main.c 데모를 Spi_* 호출로 교체. CMake 수정 불필요.
+
+## 곁들임 (리마인드)
+- Port_Init()←IOMUXC(P-1c), Mcu_InitClock()←CCM(P-1b), Dio_WriteChannel()←LED GPIO 를 얇게. Spi_Init 안에서 Mcu/Port 호출 → MCAL 모듈 협력 그림.
+
+## 검증
+- main 을 Spi_* 흐름으로 바꿔도 출력 동일하면 성공 (얼굴만 바뀌고 동작 그대로).

@@ -4,6 +4,7 @@
 #include "lpspi.h"
 #include "Spi.h"
 #include "Dio.h"
+#include "Adc.h"
 
 /* busy-wait */
 static void delay_busy(volatile uint32_t n)
@@ -88,6 +89,15 @@ int main(void)
     UART1_SendHex32(work);
     UART1_SendString(" / ");
     UART1_SendHex32(dma_work);
+    UART1_SendString("\r\n");
+
+    int adc_fail = ADC1_Init();
+    uint32_t vrefsh = ADC1_Read(0x19);          // 0x19(11001) : VREFSH = internal channel, for ADC self-test, hard connected to VRH internally
+    uint32_t gs = 0;                            // GS 확인용은 선택
+    UART1_SendString("[Adc] init = ");
+    UART1_SendString(adc_fail ? "FAIL\r\n" : "OK\r\n");
+    UART1_SendString("[Adc] VREFSH R0 = ");
+    UART1_SendHex32(vrefsh);
     UART1_SendString("\r\n");
 
     uint32_t beat = 0;

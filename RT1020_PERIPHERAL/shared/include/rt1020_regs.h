@@ -126,7 +126,7 @@
 #define EDMA_CINT           (*(volatile uint8_t *)(EDMA_BASE + 0x01F))     // 채널번호 write = INT clear
 
 
-/* 🚀 DMAMUX (eDMA의 문지기) 베이스 주소 */
+/* DMAMUX (eDMA의 문지기) 베이스 주소 */
 #define DMAMUX_BASE 0x400EC000
 #define DMAMUX_CHCFG0 (*(volatile uint32_t *)(DMAMUX_BASE + 0x000))
 
@@ -156,5 +156,15 @@
 #define LPSPI1_TDR          (*(volatile uint32_t *)(LPSPI1_BASE+0x64))
 #define LPSPI1_RDR          (*(volatile uint32_t *)(LPSPI1_BASE+0x74))
 #define LPSPI1_PARAM        (*(volatile uint32_t *)(LPSPI1_BASE+0x04))
+
+/* ADC1 register(base : 0x400C4000) */
+#define ADC1_BASE           0x400C4000u
+#define ADC1_HC0            (*(volatile uint32_t *)(ADC1_BASE+0x00))
+#define ADC1_HS             (*(volatile uint32_t *)(ADC1_BASE+0x20))
+#define ADC1_R0             (*(volatile uint32_t *)(ADC1_BASE+0x24))
+#define ADC1_CFG            (*(volatile uint32_t *)(ADC1_BASE+0x44))
+#define ADC1_GC             (*(volatile uint32_t *)(ADC1_BASE+0x48))
+#define ADC1_GS             (*(volatile uint32_t *)(ADC1_BASE+0x4C))
+
 
 #endif // RT1020_REGS_H

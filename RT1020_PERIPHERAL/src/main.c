@@ -5,6 +5,7 @@
 #include "Spi.h"
 #include "Dio.h"
 #include "Adc.h"
+#include "Pwm.h"
 
 /* busy-wait */
 static void delay_busy(volatile uint32_t n)
@@ -99,6 +100,18 @@ int main(void)
     UART1_SendString("[Adc] VREFSH R0 = ");
     UART1_SendHex32(vrefsh);
     UART1_SendString("\r\n");
+
+    Pwm1_Init();
+    uint16_t c1=Pwm1_GetCount();
+    delay_busy(100000);
+    uint16_t c2=Pwm1_GetCount();
+
+    UART1_SendString("[Pwm] CNT1 = ");
+    UART1_SendHex32(c1);
+    UART1_SendString("\r\n[Pwm] CNT2 = ");
+    UART1_SendHex32(c2);
+    UART1_SendString(c1 != c2 ? "\r\n[Pwm] running (counter advancing)\r\n"
+                                : "\r\n[Pwm] NOT running\r\n");
 
     uint32_t beat = 0;
     while (1)

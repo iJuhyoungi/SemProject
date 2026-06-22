@@ -6,6 +6,7 @@
 #include "Dio.h"
 #include "Adc.h"
 #include "Pwm.h"
+#include "Can.h"
 
 /* busy-wait */
 static void delay_busy(volatile uint32_t n)
@@ -112,6 +113,13 @@ int main(void)
     UART1_SendHex32(c2);
     UART1_SendString(c1 != c2 ? "\r\n[Pwm] running (counter advancing)\r\n"
                                 : "\r\n[Pwm] NOT running\r\n");
+
+    int can_fail = Can1_Init();
+    UART1_SendString("[Can] init = ");
+    UART1_SendString(can_fail ? "FAIL\r\n" : "OK\r\n");
+    UART1_SendString("[Can] MCR  = ");
+    UART1_SendHex32(FLEXCAN1_MCR); /* NOT_RDY(bit27)=0, FRZACK(bit24)=0 기대 */
+    UART1_SendString("\r\n");
 
     uint32_t beat = 0;
     while (1)

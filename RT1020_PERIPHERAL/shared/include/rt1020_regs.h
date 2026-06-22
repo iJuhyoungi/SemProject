@@ -10,9 +10,12 @@
 #define CCM_CDHIPR                              (*(volatile uint32_t *)0x400FC048)
 #define CCM_CCGR1                               (*(volatile uint32_t *)0x400FC06C)  // LPSPI1~4, SEMC_EXSC, GPT1, LPUART4, GPIO1, CSU, GPIO5
 /* [CCM] 클럭 제어 모듈 추가 */
+#define CCM_CCGR0                               (*(volatile uint32_t *)0x400FC068)  // CCGR0: CG7 ipg=bits15:14, CG8 PE=bits17:16 / CSCMR2 CAN_CLK_SEL=bits9:8
 #define CCM_CCGR3                               (*(volatile uint32_t *)0x400FC074)  // SEMC 모듈 전원/클럭 활성화, LPUART5~6, AOI1, ENC1~2, PWM1~2 
 #define CCM_CCGR4                               (*(volatile uint32_t *)0x400FC078)
 #define CCM_CCGR5                               (*(volatile uint32_t *)0x400FC07C)  // DMA + DMAMUX(CG3), FLEXSPI, TRNG, USDHC2, LPUART8, DCDC
+
+#define CCM_CSCMR2                              (*(volatile uint32_t *)0x400FC020)
 
 /* [IOMUXC] 핀 다중화 모듈 */
 #define IOMUXC_SW_MUX_CTL_PAD_GPIO_AD_B0_05     (*(volatile uint32_t *)0x401F80D0) // LED
@@ -177,5 +180,13 @@
 #define FLEXPWM1_SM0VAL3    (*(volatile uint16_t *)(FLEXPWM1_BASE+0x16))
 #define FLEXPWM1_OUTEN      (*(volatile uint16_t *)(FLEXPWM1_BASE+0x180))
 #define FLEXPWM1_MCTRL      (*(volatile uint16_t *)(FLEXPWM1_BASE+0x188))
+
+/* FLEXCAN1 (RM Ch.40), base 0x401D0000 */
+#define FLEXCAN1_BASE       0x401D0000u
+#define FLEXCAN1_MCR        (*(volatile uint32_t *)(FLEXCAN1_BASE+0x00))
+#define FLEXCAN1_CTRL1      (*(volatile uint32_t *)(FLEXCAN1_BASE+0x04))
+
+/* 메시지 버퍼 영역 : base + 0x80, 각각은 16바이트 */
+#define FLEXCAN1_MB(n)      ((volatile uint32_t *)(FLEXCAN1_BASE+0x80+(n)*16u))
 
 #endif // RT1020_REGS_H

@@ -188,5 +188,7 @@
 
 /* 메시지 버퍼 영역 : base + 0x80, 각각은 16바이트 */
 #define FLEXCAN1_MB(n)      ((volatile uint32_t *)(FLEXCAN1_BASE+0x80+(n)*16u))
+#define FLEXCAN1_TIMER      (*(volatile uint32_t *)(FLEXCAN1_BASE+0x08))        // MB unlock
+#define FLEXCAN1_IFLAG1     (*(volatile uint32_t *)(FLEXCAN1_BASE+0x30))        // MB 완료 flag
 
 #endif // RT1020_REGS_H

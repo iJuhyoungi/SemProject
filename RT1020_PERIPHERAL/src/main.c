@@ -121,6 +121,15 @@ int main(void)
     UART1_SendHex32(FLEXCAN1_MCR); /* NOT_RDY(bit27)=0, FRZACK(bit24)=0 기대 */
     UART1_SendString("\r\n");
 
+    int lb=Can1_LoopbackTest();
+    UART1_SendString("[Can] loopback = ");
+    if      (lb == 0) UART1_SendString("OK (TX -> RX data match)\r\n");
+    else if (lb == 1) UART1_SendString("FAIL: no RX (timeout)\r\n");
+    else if (lb == 2) UART1_SendString("FAIL: CODE not FULL\r\n");
+    else              UART1_SendString("FAIL: data mismatch\r\n");
+
+
+
     uint32_t beat = 0;
     while (1)
     {

@@ -63,6 +63,7 @@
 /* [NVIC] Nested Vectored Interrupt Controller */
 #define NVIC_ISER0                              (*(volatile uint32_t *)0xE000E100) // 인터럽트 허용 레지스터 0
 #define NVIC_ISER1                              (*(volatile uint32_t *)0xE000E104) // NVIC (ARM Cortex-M7) — IRQ 32~63 set-enable
+#define NVIC_ISER3                              (*(volatile uint32_t *)0xE000E10C) // IRQ 96~127 set enable
 #define NVIC_ICER0                              (*(volatile uint32_t *)0xE000E180) // 인터럽트 금지 레지스터 0
 #define NVIC_ICPR0                              (*(volatile uint32_t *)0xE000E280) // 인터럽트 클리어 레지스터 0
 #define SYST_CSR                                (*(volatile uint32_t *)0xE000E010) // SysTick 제어 및 상태 레지스터
@@ -190,5 +191,15 @@
 #define FLEXCAN1_MB(n)      ((volatile uint32_t *)(FLEXCAN1_BASE+0x80+(n)*16u))
 #define FLEXCAN1_TIMER      (*(volatile uint32_t *)(FLEXCAN1_BASE+0x08))        // MB unlock
 #define FLEXCAN1_IFLAG1     (*(volatile uint32_t *)(FLEXCAN1_BASE+0x30))        // MB 완료 flag
+
+// GPT1 : Base 0x401EC000
+#define GPT1_BASE           0x401EC000u
+#define GPT1_CR             (*(volatile uint32_t *)(GPT1_BASE+0x00))            // EN[0]/ENMOD[1]/CLKSRC[8:6]/FRR[9]/SWR[15]
+#define GPT1_PR             (*(volatile uint32_t *)(GPT1_BASE+0x04))            // PRESCALER[11:0]
+#define GPT1_SR             (*(volatile uint32_t *)(GPT1_BASE+0x08))            // OF1[0]..ROV[5], W1C
+#define GPT1_IR             (*(volatile uint32_t *)(GPT1_BASE+0x0C))            // OF1IE[0]..ROVIE[5]
+#define GPT1_OCR1           (*(volatile uint32_t *)(GPT1_BASE+0x10))            // 비교값 = 주기
+#define GPT1_CNT            (*(volatile uint32_t *)(GPT1_BASE+0x24))            // 현재 카운터 (RO)
+
 
 #endif // RT1020_REGS_H

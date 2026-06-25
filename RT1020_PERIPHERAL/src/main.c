@@ -7,6 +7,7 @@
 #include "Adc.h"
 #include "Pwm.h"
 #include "Can.h"
+#include "Gpt.h"
 
 /* busy-wait */
 static void delay_busy(volatile uint32_t n)
@@ -128,6 +129,11 @@ int main(void)
     else if (lb == 2) UART1_SendString("FAIL: CODE not FULL\r\n");
     else              UART1_SendString("FAIL: data mismatch\r\n");
 
+    Gpt1_Init();
+    uint32_t g1=Gpt1_GetCount();
+    uint32_t g2=Gpt1_GetCount();
+    UART1_SendString("[Gpt] CNT advancing = ");
+    UART1_SendString(g2!=g1?"YES\r\n":"NO\r\n");
 
 
     uint32_t beat = 0;
@@ -140,6 +146,9 @@ int main(void)
 
         UART1_SendString("[PERI] beat ");
         UART1_SendHex32(beat++);
+        UART1_SendString("\r\n");
+        UART1_SendString("[Gpt] tick = ");
+        UART1_SendHex32(Gpt1_GetTick());
         UART1_SendString("\r\n");
     }
 

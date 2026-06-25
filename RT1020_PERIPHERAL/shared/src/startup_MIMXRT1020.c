@@ -44,8 +44,9 @@ void PendSV_Handler(void)       __attribute__((weak, alias("Default_Handler")));
 void SysTick_Handler(void)      __attribute__((weak, alias("Default_Handler")));
 
 extern void LPUART1_IRQHandler(void);
-extern void LPSPI1_IRQHandler(void);            /* IRQ 32 → vector idx 48 */
+extern void LPSPI1_IRQHandler(void);            /* IRQ 32 -> vector idx 48 */
 extern void DMA0_IRQHandler(void);              /* 추가 : IRQ 0 -> vector idx 16 */
+extern void GPT1_IRQHandler(void);              /* IRQ 100 -> vector idx 116 */
 
 #define D_1  { .handler = Default_Handler }
 #define D_10 D_1, D_1, D_1, D_1, D_1, D_1, D_1, D_1, D_1, D_1
@@ -76,7 +77,14 @@ const vector_entry_t __VECTOR_TABLE[176] = {
     D_1, D_1, D_1, D_1, D_1, D_1, D_1, D_1, D_1, 
     D_1, D_1,
     { .handler=LPSPI1_IRQHandler },
-    D_100, D_10, D_10, D_1, D_1, D_1, D_1, D_1, D_1, D_1
+      /* idx49~115 = IRQ33~99 : 67개 (D_10×6 + D_1×7) */
+      D_10, D_10, D_10, D_10, D_10, D_10, D_1, D_1, D_1, D_1, D_1, D_1, D_1,
+      { .handler = GPT1_IRQHandler },   /* idx116 = IRQ100 */
+      /* idx117~148 : 32개 (원래 D_100의 나머지, D_10×3 + D_1×2) */
+      D_10, D_10, D_10, D_1, D_1,
+      /* idx149~175 : 27개 (원래 꼬리, D_10×2 + D_1×7) */
+      D_10, D_10, D_1, D_1, D_1, D_1, D_1, D_1, D_1
+
 };
 
 __attribute__((section(".boot_text"))) void Reset_Handler(void)

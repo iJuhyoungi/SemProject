@@ -9,6 +9,7 @@
 #include "Can.h"
 #include "Gpt.h"
 #include "Wdg.h"
+#include "Icu.h"
 
 /* busy-wait */
 static void delay_busy(volatile uint32_t n)
@@ -143,6 +144,14 @@ int main(void)
     UART1_SendString(by_wdg ? "  <- watchdog reset!\r\n" : "\r\n");
     Wdg_ClearResetCause();
 
+    Icu1_Init();
+    uint16_t e1=Icu1_GetEdgeCount();
+    delay_busy(100000);
+    uint16_t e2=Icu1_GetEdgeCount();
+    UART1_SendString("[Icu] CNTR advancing = ");
+    UART1_SendString(e2 != e1 ? "YES\r\n" : "NO\r\n");
+
+
     Wdg1_Init(0xFFFFu);                /* 16비트 */
     UART1_SendString("[Wdg] CS    = ");
     UART1_SendHex32(Wdg1_GetCS());
@@ -157,18 +166,21 @@ int main(void)
     uint32_t beat = 0;
     while (1)
     {
-        // UART1_SendString("[Wdg] CNT = ");
-        // UART1_SendHex32(Wdg1_GetCNT());
-        // UART1_SendString("\r\n");
-        // Wdg1_Refresh();
+        int feed = by_wdg || (beat < 5); /* 먹이 줄 조건 한 번에 */
 
-        if (by_wdg)
-            Wdg1_Refresh();
-        else if (beat < 5)
-            Wdg1_Refresh();
+        if (feed)
+            Wdg1_Refresh(); /* 루프 시작 */
+
+        UART1_SendString("[Icu] edge count = ");
+        UART1_SendHex32(Icu1_GetEdgeCount());
+        UART1_SendString("\r\n");
 
         Dio_WriteChannel(0, STD_HIGH);
         delay_busy(50000000);
+
+        if (feed)
+            Wdg1_Refresh(); /* delay 중간에 한 번 더 (간격 ≈ 1초) */
+
         Dio_WriteChannel(0, STD_LOW);
         delay_busy(50000000);
 

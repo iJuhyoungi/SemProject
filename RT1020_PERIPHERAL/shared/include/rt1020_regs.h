@@ -14,6 +14,7 @@
 #define CCM_CCGR3                               (*(volatile uint32_t *)0x400FC074)  // SEMC 모듈 전원/클럭 활성화, LPUART5~6, AOI1, ENC1~2, PWM1~2 
 #define CCM_CCGR4                               (*(volatile uint32_t *)0x400FC078)
 #define CCM_CCGR5                               (*(volatile uint32_t *)0x400FC07C)  // DMA + DMAMUX(CG3), FLEXSPI, TRNG, USDHC2, LPUART8, DCDC
+#define CCM_CCGR6                               (*(volatile uint32_t *)0x400FC080)  // QTIMER=CG13(bits[27:26])
 
 #define CCM_CSCMR2                              (*(volatile uint32_t *)0x400FC020)
 
@@ -211,5 +212,13 @@
 // SRC (System Reset Controller) : reset cause
 #define SRC_SRSR            (*(volatile uint32_t *)0x400F8008u)                 // wdg3_rst_b=bit7, W1C
 //Wdg3 게이트는 CCM_CCGR5의 CG2(bits[5:4])
+
+// QuadTimer TMR(RM ch.49) Base : 0x401DC000
+#define TMR1_BASE           0x401DC000u
+#define TMR1_COMP1(n)       (*(volatile uint16_t *)(TMR1_BASE + (n)*0x20u + 0x00u))  // 비교값
+#define TMR1_LOAD(n)        (*(volatile uint16_t *)(TMR1_BASE + (n)*0x20u + 0x06u))  // 재초기화 값
+#define TMR1_CNTR(n)        (*(volatile uint16_t *)(TMR1_BASE + (n)*0x20u + 0x0Au))  // 현재 카운터
+#define TMR1_CTRL(n)        (*(volatile uint16_t *)(TMR1_BASE + (n)*0x20u + 0x0Cu))  // CM/PCS/SCS/OUTMODE
+#define TMR1_SCTRL(n)       (*(volatile uint16_t *)(TMR1_BASE + (n)*0x20u + 0x0Eu))  // 상태/캡처
 
 #endif // RT1020_REGS_H

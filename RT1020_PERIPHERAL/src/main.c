@@ -8,6 +8,7 @@
 #include "Pwm.h"
 #include "Can.h"
 #include "Gpt.h"
+#include "Wdg.h"
 
 /* busy-wait */
 static void delay_busy(volatile uint32_t n)
@@ -135,10 +136,37 @@ int main(void)
     UART1_SendString("[Gpt] CNT advancing = ");
     UART1_SendString(g2!=g1?"YES\r\n":"NO\r\n");
 
+    uint32_t cause = Wdg_GetResetCause();
+    int by_wdg = (cause >> 7) & 1u;             // bit7=wdg3_rst_b
+    UART1_SendString("[Wdg] reset cause SRSR = ");
+    UART1_SendHex32(cause);
+    UART1_SendString(by_wdg ? "  <- watchdog reset!\r\n" : "\r\n");
+    Wdg_ClearResetCause();
+
+    Wdg1_Init(0xFFFFu);                /* 16비트 */
+    UART1_SendString("[Wdg] CS    = ");
+    UART1_SendHex32(Wdg1_GetCS());
+    UART1_SendString("\r\n");
+    UART1_SendString("[Wdg] TOVAL = ");
+    UART1_SendHex32(Wdg1_GetTOVAL());
+    UART1_SendString("\r\n"); /* 0x000FFFFF 기대 */
+    UART1_SendString("[Wdg] CNT0  = ");
+    UART1_SendHex32(Wdg1_GetCNT());
+    UART1_SendString("\r\n");
 
     uint32_t beat = 0;
     while (1)
     {
+        // UART1_SendString("[Wdg] CNT = ");
+        // UART1_SendHex32(Wdg1_GetCNT());
+        // UART1_SendString("\r\n");
+        // Wdg1_Refresh();
+
+        if (by_wdg)
+            Wdg1_Refresh();
+        else if (beat < 5)
+            Wdg1_Refresh();
+
         Dio_WriteChannel(0, STD_HIGH);
         delay_busy(50000000);
         Dio_WriteChannel(0, STD_LOW);

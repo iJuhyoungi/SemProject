@@ -201,5 +201,15 @@
 #define GPT1_OCR1           (*(volatile uint32_t *)(GPT1_BASE+0x10))            // 비교값 = 주기
 #define GPT1_CNT            (*(volatile uint32_t *)(GPT1_BASE+0x24))            // 현재 카운터 (RO)
 
+// RTWDOG(WDOG3, RM Ch.53) Base : 0x400BC000
+#define RTWDG_BASE          0x400BC000u
+#define RTWDG_CS            (*(volatile uint32_t *)(RTWDG_BASE+0x00))           // 제어/상태 (대부분은 write-once)
+#define RTWDG_CNT           (*(volatile uint32_t *)(RTWDG_BASE+0x04))           // refresh/unlock 명령 레지스터
+#define RTWDG_TOVAL         (*(volatile uint32_t *)(RTWDG_BASE+0x08))           // timeout value
+#define RTWDG_WIN           (*(volatile uint32_t *)(RTWDG_BASE+0x0C))           // window 하한
+
+// SRC (System Reset Controller) : reset cause
+#define SRC_SRSR            (*(volatile uint32_t *)0x400F8008u)                 // wdg3_rst_b=bit7, W1C
+//Wdg3 게이트는 CCM_CCGR5의 CG2(bits[5:4])
 
 #endif // RT1020_REGS_H

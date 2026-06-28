@@ -1,0 +1,14 @@
+#ifndef WDG_H
+#define WDG_H
+
+#include <stdint.h>
+
+void Wdg1_Init(uint32_t timeout_ticks);         // unlock + CS/TOVAL설정 + EN
+void Wdg1_Refresh(void);                        // 0xB480A602 -> CNT
+uint32_t Wdg1_GetCS(void);                      // 진단용 CS readback
+uint32_t Wdg_GetResetCause(void);               // SRC_SRSR
+void Wdg_ClearResetCause(void);                 // SRSR W1C
+uint32_t Wdg1_GetCNT(void);                     // 현재 카운터
+uint32_t Wdg1_GetTOVAL(void);                   // TOVAL 확인
+
+#endif

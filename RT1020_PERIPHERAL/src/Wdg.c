@@ -18,6 +18,8 @@ void Wdg1_Init(uint32_t timeout_ticks)
     // 레지스터 접근용 클럭 게이트
     CCM_CCGR5 |= (3u << 4);
 
+    __asm volatile ("cpsid i");
+    
         // unlock인데 write-once 비트 재설정을 허용
         RTWDG_CNT = WDG_UNLOCK;
     while (!(RTWDG_CS & WDG_CS_ULK))
@@ -33,6 +35,8 @@ void Wdg1_Init(uint32_t timeout_ticks)
     while (!(RTWDG_CS & WDG_CS_RCS))
     {
     }
+
+    __asm volatile ("cpsie i");   /* 오타 수정: 재설정 끝났으니 인터럽트 복구 (cpsid→cpsie) */
 }
 
 void Wdg1_Refresh(void)

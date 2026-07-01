@@ -92,6 +92,16 @@ __attribute__((section(".boot_text"))) void Reset_Handler(void)
     SystemInit();
     SCB_CPACR |= (0xF << 20); /* FPU 활성화 */
 
+    /* I-cache 활성화: flash XIP 실행을 결정적/고속으로.
+       캐시 없이 XIP 면 busy-loop 실행시간이 코드 정렬에 의존해 워치독 등
+       타이밍 민감 코드가 레이아웃에 따라 오동작(Heisenbug). 여기서 켠다. */
+    *(volatile uint32_t *)0xE000EF50 = 0u;            /* ICIALLU: I-cache 무효화 */
+    __asm volatile ("dsb");
+    __asm volatile ("isb");
+    *(volatile uint32_t *)0xE000ED14 |= (1u << 17);   /* SCB_CCR.IC = 1 : I-cache enable */
+    __asm volatile ("dsb");
+    __asm volatile ("isb");
+
 #if defined(IS_BOOTLOADER)
 
     UART1_Init();

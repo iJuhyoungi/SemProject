@@ -95,3 +95,34 @@ int Can1_LoopbackTest(void)
     return 0;
 
 }
+
+// register TX helper : PDU를 MB(hth)에 실어서 전송
+void Can1_Send(uint8_t mb, uint32_t id, uint8_t dlc, const uint8_t *sdu)
+{
+    volatile uint32_t *tx=FLEXCAN1_MB(mb);
+    tx[1]=(id<<18);                      // word1: 표준 ID
+    tx[2]=((uint32_t)sdu[0]<<24)|((uint32_t)sdu[1]<<16)|((uint32_t)sdu[2]<<8)|sdu[3];
+    tx[3]=((uint32_t)sdu[4]<<24)|((uint32_t)sdu[5]<<16)|((uint32_t)sdu[6]<<8)|sdu[7];
+    tx[0]=(0xCu<<24)|((uint32_t)dlc<<16);          // word0: CODE=TX(0xC), DLC -> 전송 시작
+}
+
+void Can_Init(const Can_ConfigType *config)
+{
+    (void)config;
+    Can1_Init();
+}
+
+Std_ReturnType Can_SetControllerMode(uint8_t Controller, Can_ControllerStateType Transition)
+{
+    (void)Controller;
+    return (Transition == CAN_CS_STARTED) ? E_OK : E_NOT_OK;
+}
+
+Std_ReturnType Can_Write(Can_HwHandleType Hth, const Can_PduType *PduInfo)
+{
+    if(PduInfo==0||PduInfo->length>8u){
+        return E_NOT_OK;
+    }
+    Can1_Send((uint8_t)Hth, PduInfo->id, PduInfo->length, PduInfo->sdu);
+    return E_OK;
+}

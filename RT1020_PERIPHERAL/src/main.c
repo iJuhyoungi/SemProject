@@ -96,16 +96,22 @@ int main(void)
     UART1_SendHex32(dma_work);
     UART1_SendString("\r\n");
 
-    int adc_fail = ADC1_Init();
-    uint32_t vrefsh = ADC1_Read(0x19);          // 0x19(11001) : VREFSH = internal channel, for ADC self-test, hard connected to VRH internally
-    uint32_t gs = 0;                            // GS 확인용은 선택
-    UART1_SendString("[Adc] init = ");
-    UART1_SendString(adc_fail ? "FAIL\r\n" : "OK\r\n");
+    Adc_Init(0);
+    Adc_ValueGroupType adc_buf[1];
+    Std_ReturnType adc_r=Adc_ReadGroup(0,adc_buf);
+    UART1_SendString("[Adc] ReadGroup = ");
+    UART1_SendString((adc_r == E_OK) ? "OK\r\n" : "FAIL\r\n");
     UART1_SendString("[Adc] VREFSH R0 = ");
-    UART1_SendHex32(vrefsh);
+    UART1_SendHex32(adc_buf[0]);
     UART1_SendString("\r\n");
 
-    Pwm1_Init();
+    Pwm_Init(0);
+    Pwm_SetDutyCycle(0,0x2000);
+    UART1_SendString("[Pwm] duty 25% set, VAL3 = ");
+    UART1_SendHex32(FLEXPWM1_SM0VAL3);
+    UART1_SendString("\r\n");
+    UART1_SendString(Pwm1_GetCount() != Pwm1_GetCount()?"[Pwm] running\r\n" : "[Pwm] running\r\n");
+    
     uint16_t c1=Pwm1_GetCount();
     delay_busy(100000);
     uint16_t c2=Pwm1_GetCount();
@@ -117,11 +123,10 @@ int main(void)
     UART1_SendString(c1 != c2 ? "\r\n[Pwm] running (counter advancing)\r\n"
                                 : "\r\n[Pwm] NOT running\r\n");
 
-    int can_fail = Can1_Init();
-    UART1_SendString("[Can] init = ");
-    UART1_SendString(can_fail ? "FAIL\r\n" : "OK\r\n");
+    Can_Init(0);
+    UART1_SendString("[Can] init = OK\r\n");
     UART1_SendString("[Can] MCR  = ");
-    UART1_SendHex32(FLEXCAN1_MCR); /* NOT_RDY(bit27)=0, FRZACK(bit24)=0 기대 */
+    UART1_SendHex32(FLEXCAN1_MCR);
     UART1_SendString("\r\n");
 
     int lb=Can1_LoopbackTest();
@@ -131,11 +136,29 @@ int main(void)
     else if (lb == 2) UART1_SendString("FAIL: CODE not FULL\r\n");
     else              UART1_SendString("FAIL: data mismatch\r\n");
 
-    Gpt1_Init();
+    Can_SetControllerMode(0, CAN_CS_STARTED);
+    uint8_t txdata[8]={0x11,0x22,0x33,0x44,0x55,0x66,0x77,0x88};
+    Can_PduType pdu={.swPduHandle=0, .length=8, .id=0x123, .sdu=txdata};
+    Std_ReturnType w=Can_Write(0,&pdu);
+    UART1_SendString("[Can] write(HOH=0) = ");
+    UART1_SendString(w == E_OK ? "OK\r\n" : "FAIL\r\n");
+
+    // Gpt1_Init();
+    // uint32_t g1=Gpt1_GetCount();
+    // uint32_t g2=Gpt1_GetCount();
+    // UART1_SendString("[Gpt] CNT advancing = ");
+    // UART1_SendString(g2!=g1?"YES\r\n":"NO\r\n");
+    Gpt_Init(0);
     uint32_t g1=Gpt1_GetCount();
+    delay_busy(100000);
     uint32_t g2=Gpt1_GetCount();
     UART1_SendString("[Gpt] CNT advancing = ");
     UART1_SendString(g2!=g1?"YES\r\n":"NO\r\n");
+    UART1_SendString("[Gpt] elapsed   = ");
+    UART1_SendHex32(Gpt_GetTimeElapsed(0));
+    UART1_SendString("\r\n[Gpt] remaining = ");
+    UART1_SendHex32(Gpt_GetTimeRemaining(0));
+    UART1_SendString("\r\n");
 
     uint32_t cause = Wdg_GetResetCause();
     int by_wdg = (cause >> 7) & 1u;             // bit7=wdg3_rst_b
@@ -144,15 +167,15 @@ int main(void)
     UART1_SendString(by_wdg ? "  <- watchdog reset!\r\n" : "\r\n");
     Wdg_ClearResetCause();
 
-    Icu1_Init();
-    uint16_t e1=Icu1_GetEdgeCount();
+    Icu_Init(0);
+    uint16_t e1=Icu_GetEdgeNumbers(0);
     delay_busy(100000);
-    uint16_t e2=Icu1_GetEdgeCount();
+    uint16_t e2=Icu_GetEdgeNumbers(0);
     UART1_SendString("[Icu] CNTR advancing = ");
     UART1_SendString(e2 != e1 ? "YES\r\n" : "NO\r\n");
 
 
-    Wdg1_Init(0xFFFFu);                /* 16비트 */
+    Wdg_Init(0);                /* 16비트 */
     UART1_SendString("[Wdg] CS    = ");
     UART1_SendHex32(Wdg1_GetCS());
     UART1_SendString("\r\n");
@@ -168,21 +191,19 @@ int main(void)
     {
         int feed = by_wdg || (beat < 5); /* 먹이 줄 조건 한 번에 */
 
-        if (feed)
-            Wdg1_Refresh(); /* 루프 시작 */
+        Wdg_SetTriggerCondition(feed ? 100u : 0u);
 
         UART1_SendString("[Icu] edge count = ");
-        UART1_SendHex32(Icu1_GetEdgeCount());
+        UART1_SendHex32(Icu_GetEdgeNumbers(0));
         UART1_SendString("\r\n");
 
         Dio_WriteChannel(0, STD_HIGH);
-        delay_busy(50000000);
+        delay_busy(20000000);
 
-        if (feed)
-            Wdg1_Refresh(); /* delay 중간에 한 번 더 (간격 ≈ 1초) */
+        Wdg_SetTriggerCondition(feed ? 100u : 0u);
 
         Dio_WriteChannel(0, STD_LOW);
-        delay_busy(50000000);
+        delay_busy(20000000);
 
         UART1_SendString("[PERI] beat ");
         UART1_SendHex32(beat++);

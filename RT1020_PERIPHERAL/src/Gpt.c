@@ -26,7 +26,7 @@ void Gpt1_Init(void)
     g_gpt_tick = 0;
 
     GPT1_IR = GPT_OF1;
-    NVIC_ISER3 = (1u << 4);
+    NVIC_ISER3 = (1u << 4);   /* GPT IRQ(IRQ100) enable */
 
     GPT1_CR |= GPT_EN;
 }
@@ -49,3 +49,35 @@ uint32_t Gpt1_GetTick(void)
 {
     return g_gpt_tick;
 }
+
+/* ===== AUTOSAR Wrapping ===== */
+void Gpt_Init(const Gpt_ConfigType *ConfigPtr)
+{
+    (void)ConfigPtr;
+    Gpt1_Init();
+}
+
+Gpt_ValueType Gpt_GetTimeElapsed(Gpt_ChannelType Channel)
+{
+    (void)Channel;
+    return GPT1_CNT;                  /* 이번 주기에서 경과한 tick */
+}
+
+Gpt_ValueType Gpt_GetTimeRemaining(Gpt_ChannelType Channel)
+{
+    (void)Channel;
+    return GPT1_OCR1 - GPT1_CNT;      /* 목표(OCR1)까지 남은 tick */
+}
+
+void Gpt_EnableNotification(Gpt_ChannelType Channel)
+{
+    (void)Channel;
+    GPT1_IR |= (1u << 0);             /* OF1IE */
+}
+
+void Gpt_DisableNotification(Gpt_ChannelType Channel)
+{
+    (void)Channel;
+    GPT1_IR &= ~(1u << 0);
+}
+

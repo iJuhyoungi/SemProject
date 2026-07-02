@@ -68,3 +68,22 @@ uint32_t Wdg1_GetTOVAL(void)
 {
     return RTWDG_TOVAL;
 }
+
+void Wdg_Init(const Wdg_ConfigType *ConfigPtr)
+{
+    (void)ConfigPtr;
+    Wdg1_Init(0xFFFFu);
+}
+
+Std_ReturnType Wdg_SetMode(Wdg_ModeType Mode)
+{
+    /* 레벨1: RTWDOG는 write-once라 동작 중 OFF 불가 -> OFF만 reject */
+    return (Mode == WDGIF_OFF_MODE) ? E_NOT_OK : E_OK;
+}
+
+void Wdg_SetTriggerCondition(uint16_t timeout)
+{
+    if(timeout>0u){
+        Wdg1_Refresh();
+    }
+}

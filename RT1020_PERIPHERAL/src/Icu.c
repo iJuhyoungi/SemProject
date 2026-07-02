@@ -32,3 +32,21 @@ uint16_t Icu1_GetEdgeCount(void)
 {
     return TMR1_CNTR(1);
 }
+
+void Icu_Init(const Icu_ConfigType *ConfigPtr)
+{
+    (void)ConfigPtr;
+    Icu1_Init();
+}
+
+Icu_EdgeNumberType Icu_GetEdgeNumbers(Icu_ChannelType Channel)
+{
+    (void)Channel;
+    return Icu1_GetEdgeCount();         //CNTR1=ch0 누적 엣지 수
+}
+
+void Icu_ResetEdgeCount(Icu_ChannelType Channel)
+{
+    (void)Channel;
+    TMR1_CNTR(1)=0u;                    // ch1 카운터 클리어
+}

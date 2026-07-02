@@ -25,3 +25,23 @@ uint16_t Pwm1_GetCount(void)
 {
     return FLEXPWM1_SM0CNT;
 }
+
+//helper
+static void Pwm1_SetCompare(uint16_t val3){
+    FLEXPWM1_SM0VAL3=val3;
+    FLEXPWM1_MCTRL|=(1u<<0);
+}
+
+//AUTOSAR Wrapping
+void Pwm_Init(const Pwm_ConfigType *ConfigPtr){
+    (void)ConfigPtr;
+    Pwm1_Init();
+}
+
+void Pwm_SetDutyCycle(Pwm_ChannelType Channel, uint16_t DutyCycle){
+    (void)Channel;          // 레벨1: SM0 PWM_A
+    // 표준 0x8000=100% -> 주기 VAL1=0xFFFF 기준 VAL3 환산
+    uint16_t val3=(uint16_t)(((uint32_t)DutyCycle* 0xFFFFu)/0x8000u);
+    Pwm1_SetCompare(val3);
+    
+}

@@ -25,4 +25,20 @@ void Wdg_Init(const Wdg_ConfigType *ConfigPtr);
 Std_ReturnType Wdg_SetMode(Wdg_ModeType Mode);
 void Wdg_SetTriggerCondition(uint16_t timeout);
 
+  #define WDG_MODULE_ID        102u
+  #define WDG_DEV_ERROR_DETECT STD_ON
+
+  #define WDG_SID_INIT             0x00u
+  #define WDG_SID_SETMODE          0x01u
+  #define WDG_SID_SETTRIGGERCOND   0x03u
+
+  #define WDG_E_DRIVER_STATE 0x10u
+  #define WDG_E_PARAM_MODE   0x11u
+
+typedef enum
+{
+    WDG_DRV_UNINIT = 0,
+    WDG_DRV_INITIALIZED
+} Wdg_DriverStateType;
+
 #endif

@@ -96,8 +96,13 @@ int main(void)
     UART1_SendHex32(dma_work);
     UART1_SendString("\r\n");
 
-    Adc_Init(0);
+    UART1_SendString("[Det-test] expect 3 reports:\r\n");
     Adc_ValueGroupType adc_buf[1];
+    (void)Adc_ReadGroup(0, adc_buf);
+    Adc_Init(0);
+    (void)Adc_ReadGroup(7, adc_buf);
+    (void)Adc_ReadGroup(0, (Adc_ValueGroupType *)0);
+    
     Std_ReturnType adc_r=Adc_ReadGroup(0,adc_buf);
     UART1_SendString("[Adc] ReadGroup = ");
     UART1_SendString((adc_r == E_OK) ? "OK\r\n" : "FAIL\r\n");
@@ -141,6 +146,11 @@ int main(void)
     Std_ReturnType w=Can_Write(0,&pdu);
     UART1_SendString("[Can] write(HOH=0) = ");
     UART1_SendString(w == E_OK ? "OK\r\n" : "FAIL\r\n");
+
+    /* DET negative test: 9바이트 PDU 는 classic CAN 한계(8) 초과 -> PARAM_DATA_LENGTH 신고 기대 */
+    uint8_t big9[9]={0};
+    Can_PduType bad={.swPduHandle=0, .length=9, .id=0x123, .sdu=big9};
+    (void)Can_Write(0,&bad);
 
     Gpt_Init(0);
     uint32_t g1=Gpt1_GetCount();

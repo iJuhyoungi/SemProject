@@ -44,5 +44,21 @@ void              Spi_SetAsyncMode(Spi_AsyncModeType Mode);
 Spi_StatusType    Spi_GetStatus(void);
 Spi_SeqResultType Spi_GetSequenceResult(Spi_SequenceType Sequence);
 
+#define SPI_MODULE_ID           83u
+#define SPI_DEV_ERROR_DETECT    STD_ON
+
+#define SPI_SID_INIT            0x00u
+#define SPI_SID_WRITEIB         0x02u
+#define SPI_SID_ASYNCTRANSMIT   0x03u
+#define SPI_SID_GETSEQRESULT    0x08u
+#define SPI_SID_SYNCTRANSMIT    0x0Au
+#define SPI_SID_SETASYNCMODE    0x0Du
+
+#define SPI_E_PARAM_CHANNEL     0x0Au
+#define SPI_E_PARAM_LENGTH      0x0Du
+#define SPI_E_PARAM_POINTER     0x10u
+#define SPI_E_UNINIT            0x1Au
+#define SPI_E_SEQ_PENDING       0x2Au
+
 
 #endif /* SPI_H */

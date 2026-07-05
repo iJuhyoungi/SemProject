@@ -23,6 +23,23 @@ typedef enum
     ADC_COMPLETED
 } Adc_StatusType;
 
+#define ADC_MODULE_ID               123u            //AUTOSAR 표준 모듈 번호
+#define ADC_DEV_ERROR_DETECT        STD_ON          //STD_OFF로 바꾸면 guard 전체가 빌드에서 제거
+
+#define ADC_SID_INIT                0x00u           //SERVER ID
+#define ADC_SID_READGROUP           0x04u
+#define ADC_SID_GETGROUPSTATUS      0x09u
+
+#define ADC_E_UNINIT                0x0Au
+#define ADC_E_PARAM_POINTER         0x14u
+#define ADC_E_PARAM_GROUP           0x15u
+
+typedef enum
+{
+    ADC_DRV_UNINIT = 0,
+    ADC_DRV_INITIALIZED
+} Adc_DriverStateType;
+
 void Adc_Init(const Adc_ConfigType *ConfigPtr);
 Std_ReturnType Adc_ReadGroup(Adc_GroupType Group, Adc_ValueGroupType *DataBufferPtr);
 Adc_StatusType Adc_GetGroupStatus(Adc_GroupType Group);

@@ -35,4 +35,23 @@ void Can_Init(const Can_ConfigType *config);
 Std_ReturnType Can_SetControllerMode(uint8_t Controller, Can_ControllerStateType Transition);
 Std_ReturnType Can_Write(Can_HwHandleType Hth, const Can_PduType *PduInfo);
 
+#define CAN_MODULE_ID           80u
+#define CAN_DEV_ERROR_DETECT    STD_ON
+
+#define CAN_SID_INIT                    0x00u
+#define CAN_SID_SETCONTROLLERMODE       0x03u
+#define CAN_SID_WRITE                   0x06u
+
+#define CAN_E_PARAM_POINTER     0x01u
+#define CAN_E_PARAM_HANDLE      0x02u
+#define CAN_E_PARAM_DATA_LENGTH 0x03u
+#define CAN_E_UNINIT            0x05u
+#define CAN_E_TRANSITION        0x06u
+
+typedef enum
+{
+    CAN_DRV_UNINIT = 0,
+    CAN_DRV_INITIALIZED
+} Can_DriverStateType;
+
 #endif

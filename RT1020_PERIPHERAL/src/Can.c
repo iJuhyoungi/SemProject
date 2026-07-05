@@ -1,9 +1,12 @@
 #include "Can.h"
 #include "rt1020_regs.h"
+#include "Det.h"
 
 #define MB_TX       0u
 #define MB_RX       1u
 #define CAN_ID      0x123u
+
+static Can_DriverStateType Can_DriverState = CAN_DRV_UNINIT;
 
 int Can1_Init(void)
 {
@@ -110,19 +113,45 @@ void Can_Init(const Can_ConfigType *config)
 {
     (void)config;
     Can1_Init();
+    Can_DriverState = CAN_DRV_INITIALIZED;
 }
 
 Std_ReturnType Can_SetControllerMode(uint8_t Controller, Can_ControllerStateType Transition)
 {
     (void)Controller;
-    return (Transition == CAN_CS_STARTED) ? E_OK : E_NOT_OK;
+#if (CAN_DEV_ERROR_DETECT == STD_ON)
+    if (Can_DriverState == CAN_DRV_UNINIT) {
+        Det_ReportError(CAN_MODULE_ID, 0u, CAN_SID_SETCONTROLLERMODE, CAN_E_UNINIT);
+        return E_NOT_OK;
+    }
+    if (Transition != CAN_CS_STARTED) {         /* 레벨1: STARTED 외 전이는 미지원 */
+        Det_ReportError(CAN_MODULE_ID, 0u, CAN_SID_SETCONTROLLERMODE, CAN_E_TRANSITION);
+        return E_NOT_OK;
+    }
+#endif
+    return E_OK;
 }
 
 Std_ReturnType Can_Write(Can_HwHandleType Hth, const Can_PduType *PduInfo)
 {
-    if(PduInfo==0||PduInfo->length>8u){
+#if (CAN_DEV_ERROR_DETECT == STD_ON)
+    if (Can_DriverState == CAN_DRV_UNINIT) {
+        Det_ReportError(CAN_MODULE_ID, 0u, CAN_SID_WRITE, CAN_E_UNINIT);
         return E_NOT_OK;
     }
+    if (Hth != 0u) {                            /* 유효 Hth = 0 (TX MB) 뿐 */
+        Det_ReportError(CAN_MODULE_ID, 0u, CAN_SID_WRITE, CAN_E_PARAM_HANDLE);
+        return E_NOT_OK;
+    }
+    if (PduInfo == 0 || PduInfo->sdu == 0) {
+        Det_ReportError(CAN_MODULE_ID, 0u, CAN_SID_WRITE, CAN_E_PARAM_POINTER);
+        return E_NOT_OK;
+    }
+    if (PduInfo->length > 8u) {                 /* classic CAN 프레임 한계 */
+        Det_ReportError(CAN_MODULE_ID, 0u, CAN_SID_WRITE, CAN_E_PARAM_DATA_LENGTH);
+        return E_NOT_OK;
+    }
+#endif
     Can1_Send((uint8_t)Hth, PduInfo->id, PduInfo->length, PduInfo->sdu);
     return E_OK;
 }

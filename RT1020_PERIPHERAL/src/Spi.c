@@ -3,6 +3,7 @@
 #include "lpspi.h"
 #include "Mcu.h"
 #include "Port.h"
+#include "Det.h"
 
 /* --- 내부 상태 --- */
 static Spi_StatusType s_status = SPI_UNINIT;
@@ -34,11 +35,28 @@ Std_ReturnType Spi_DeInit(void)
 
 Std_ReturnType Spi_WriteIB(Spi_ChannelType Channel, const uint8_t *src, uint16_t len)
 {
-    (void)Channel;
-    if (src == 0 || len > SPI_IB_SIZE)
+#if (SPI_DEV_ERROR_DETECT == STD_ON)
+    if (s_status == SPI_UNINIT)
     {
+        Det_ReportError(SPI_MODULE_ID, 0u, SPI_SID_WRITEIB, SPI_E_UNINIT);
         return E_NOT_OK;
     }
+    if (Channel != 0u)
+    {
+        Det_ReportError(SPI_MODULE_ID, 0u, SPI_SID_WRITEIB, SPI_E_PARAM_CHANNEL);
+        return E_NOT_OK;
+    }
+    if (src == 0)
+    {
+        Det_ReportError(SPI_MODULE_ID, 0u, SPI_SID_WRITEIB, SPI_E_PARAM_POINTER);
+        return E_NOT_OK;
+    }
+    if (len == 0u || len > SPI_IB_SIZE)
+    {
+        Det_ReportError(SPI_MODULE_ID, 0u, SPI_SID_WRITEIB, SPI_E_PARAM_LENGTH);
+        return E_NOT_OK;
+    }
+#endif
 
     for (uint16_t i = 0; i < len; ++i)
     {
@@ -52,8 +70,17 @@ Std_ReturnType Spi_WriteIB(Spi_ChannelType Channel, const uint8_t *src, uint16_t
 /* blocking 송신 */
 Std_ReturnType Spi_SyncTransmit(Spi_SequenceType Sequence)
 {
-    (void)Sequence;
-    if (s_status == SPI_UNINIT || s_ib_len == 0 || s_ib_len > 16u)
+#if (SPI_DEV_ERROR_DETECT == STD_ON)
+    if (s_status == SPI_UNINIT) {
+        Det_ReportError(SPI_MODULE_ID, 0u, SPI_SID_SYNCTRANSMIT, SPI_E_UNINIT);
+        return E_NOT_OK;
+    }
+    if (s_status == SPI_BUSY) {     /* 이미 전송 중 -> 스펙: SEQ_PENDING */
+        Det_ReportError(SPI_MODULE_ID, 0u, SPI_SID_SYNCTRANSMIT, SPI_E_SEQ_PENDING);
+        return E_NOT_OK;
+    }
+#endif
+    if (s_ib_len == 0 || s_ib_len > 16u)    /* 내부 버퍼 상태는 기존대로 (Async 는 >16 조건 없음) */
         return E_NOT_OK;
 
     s_status = SPI_BUSY;
@@ -65,8 +92,17 @@ Std_ReturnType Spi_SyncTransmit(Spi_SequenceType Sequence)
 /* non-blocking 송신 */
 Std_ReturnType Spi_AsyncTransmit(Spi_SequenceType Sequence)
 {
-    (void)Sequence;
-    if (s_status == SPI_UNINIT || s_ib_len == 0)
+#if (SPI_DEV_ERROR_DETECT == STD_ON)
+    if (s_status == SPI_UNINIT) {
+        Det_ReportError(SPI_MODULE_ID, 0u, SPI_SID_ASYNCTRANSMIT, SPI_E_UNINIT);
+        return E_NOT_OK;
+    }
+    if (s_status == SPI_BUSY) {     /* 이미 전송 중 -> 스펙: SEQ_PENDING */
+        Det_ReportError(SPI_MODULE_ID, 0u, SPI_SID_ASYNCTRANSMIT, SPI_E_SEQ_PENDING);
+        return E_NOT_OK;
+    }
+#endif
+    if (s_ib_len == 0)
         return E_NOT_OK;
 
     s_status = SPI_BUSY;

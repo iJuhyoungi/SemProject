@@ -33,20 +33,47 @@ uint16_t Icu1_GetEdgeCount(void)
     return TMR1_CNTR(1);
 }
 
+#include "Det.h"
+
+static Icu_DriverStateType Icu_DriverState = ICU_DRV_UNINIT;
+
 void Icu_Init(const Icu_ConfigType *ConfigPtr)
 {
     (void)ConfigPtr;
     Icu1_Init();
+    Icu_DriverState = ICU_DRV_INITIALIZED;
 }
 
 Icu_EdgeNumberType Icu_GetEdgeNumbers(Icu_ChannelType Channel)
 {
+#if (ICU_DEV_ERROR_DETECT == STD_ON)
+    if (Icu_DriverState == ICU_DRV_UNINIT) {
+        Det_ReportError(ICU_MODULE_ID, 0u, ICU_SID_GETEDGENUMBERS, ICU_E_UNINIT);
+        return 0u;
+    }
+    if (Channel != 0u) {
+        Det_ReportError(ICU_MODULE_ID, 0u, ICU_SID_GETEDGENUMBERS, ICU_E_PARAM_CHANNEL);
+        return 0u;
+    }
+#else
     (void)Channel;
+#endif
     return Icu1_GetEdgeCount();         //CNTR1=ch0 누적 엣지 수
 }
 
 void Icu_ResetEdgeCount(Icu_ChannelType Channel)
 {
+#if (ICU_DEV_ERROR_DETECT == STD_ON)
+    if (Icu_DriverState == ICU_DRV_UNINIT) {
+        Det_ReportError(ICU_MODULE_ID, 0u, ICU_SID_RESETEDGECOUNT, ICU_E_UNINIT);
+        return;
+    }
+    if (Channel != 0u) {
+        Det_ReportError(ICU_MODULE_ID, 0u, ICU_SID_RESETEDGECOUNT, ICU_E_PARAM_CHANNEL);
+        return;
+    }
+#else
     (void)Channel;
+#endif
     TMR1_CNTR(1)=0u;                    // ch1 카운터 클리어
 }

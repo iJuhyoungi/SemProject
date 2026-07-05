@@ -1,5 +1,6 @@
 #include "Wdg.h"
 #include "rt1020_regs.h"
+#include "Det.h"
 
 #define WDG_CS_CMD32EN (1u << 13)
 #define WDG_CS_ULK (1u << 11)    // RO : unlock됨
@@ -69,20 +70,39 @@ uint32_t Wdg1_GetTOVAL(void)
     return RTWDG_TOVAL;
 }
 
+static Wdg_DriverStateType Wdg_DriverState = WDG_DRV_UNINIT;
+
 void Wdg_Init(const Wdg_ConfigType *ConfigPtr)
 {
     (void)ConfigPtr;
     Wdg1_Init(0xFFFFu);
+    Wdg_DriverState = WDG_DRV_INITIALIZED;
 }
 
 Std_ReturnType Wdg_SetMode(Wdg_ModeType Mode)
 {
+#if (WDG_DEV_ERROR_DETECT == STD_ON)
+    if(Wdg_DriverState==WDG_DRV_UNINIT){    /* Wdg 는 E_UNINIT 대신 DRIVER_STATE */
+        Det_ReportError(WDG_MODULE_ID, 0u, WDG_SID_SETMODE, WDG_E_DRIVER_STATE);
+        return E_NOT_OK;
+    }
+    if(Mode==WDGIF_OFF_MODE){               /* RTWDOG 은 동작 중 OFF 불가 */
+        Det_ReportError(WDG_MODULE_ID, 0u, WDG_SID_SETMODE, WDG_E_PARAM_MODE);
+        return E_NOT_OK;
+    }
+#endif
     /* 레벨1: RTWDOG는 write-once라 동작 중 OFF 불가 -> OFF만 reject */
     return (Mode == WDGIF_OFF_MODE) ? E_NOT_OK : E_OK;
 }
 
 void Wdg_SetTriggerCondition(uint16_t timeout)
 {
+#if (WDG_DEV_ERROR_DETECT == STD_ON)
+    if(Wdg_DriverState==WDG_DRV_UNINIT){    /* init 전 refresh 차단 = fail-safe 방향 */
+        Det_ReportError(WDG_MODULE_ID, 0u, WDG_SID_SETTRIGGERCOND, WDG_E_DRIVER_STATE);
+        return;
+    }
+#endif
     if(timeout>0u){
         Wdg1_Refresh();
     }

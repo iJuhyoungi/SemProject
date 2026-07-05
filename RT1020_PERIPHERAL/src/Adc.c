@@ -36,18 +36,36 @@ uint32_t ADC1_Read(uint8_t channel)
 }
 
 //AUTOSAR Wrapping
+#include "Det.h"
+
+static Adc_DriverStateType Adc_DriverState = ADC_DRV_UNINIT;
+
 void Adc_Init(const Adc_ConfigType *ConfigPtr)
 {
     (void)ConfigPtr;
     ADC1_Init();
+    Adc_DriverState = ADC_DRV_INITIALIZED;
 
 }
 
 Std_ReturnType Adc_ReadGroup(Adc_GroupType Group, Adc_ValueGroupType *DataBufferPtr)
 {
-    if(Group!=0u||DataBufferPtr==0){
+#if(ADC_DEV_ERROR_DETECT==STD_ON)
+    if(Adc_DriverState==ADC_DRV_UNINIT){
+        Det_ReportError(ADC_MODULE_ID, 0u, ADC_SID_READGROUP, ADC_E_UNINIT);
         return E_NOT_OK;
     }
+
+    if(Group!=0){
+        Det_ReportError(ADC_MODULE_ID, 0u, ADC_SID_READGROUP, ADC_E_PARAM_GROUP);
+        return E_NOT_OK;
+    }
+
+    if(DataBufferPtr==0){
+        Det_ReportError(ADC_MODULE_ID, 0u, ADC_SID_READGROUP, ADC_E_PARAM_POINTER);
+        return E_NOT_OK;
+    }
+#endif
 
     DataBufferPtr[0]=(Adc_ValueGroupType)ADC1_Read(ADC_GROUP0_CHANNEL);
     return E_OK;

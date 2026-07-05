@@ -1,5 +1,8 @@
 #include "Pwm.h"
 #include "rt1020_regs.h"
+#include "Det.h"
+
+static Pwm_DriverStateType Pwm_DriverState = PWM_DRV_UNINIT;
 
 void Pwm1_Init(void)
 {
@@ -33,13 +36,25 @@ static void Pwm1_SetCompare(uint16_t val3){
 }
 
 //AUTOSAR Wrapping
-void Pwm_Init(const Pwm_ConfigType *ConfigPtr){
+void Pwm_Init(const Pwm_ConfigType *ConfigPtr)
+{
     (void)ConfigPtr;
     Pwm1_Init();
+    Pwm_DriverState = PWM_DRV_INITIALIZED;
 }
 
 void Pwm_SetDutyCycle(Pwm_ChannelType Channel, uint16_t DutyCycle){
-    (void)Channel;          // 레벨1: SM0 PWM_A
+#if (PWM_DEV_ERROR_DETECT == STD_ON)
+    if (Pwm_DriverState == PWM_DRV_UNINIT) {
+        Det_ReportError(PWM_MODULE_ID, 0u, PWM_SID_SETDUTYCYCLE, PWM_E_UNINIT);
+        return;
+    }
+    if (Channel != 0u) {
+        Det_ReportError(PWM_MODULE_ID, 0u, PWM_SID_SETDUTYCYCLE, PWM_E_PARAM_CHANNEL);
+        return;
+    }
+#endif
+
     // 표준 0x8000=100% -> 주기 VAL1=0xFFFF 기준 VAL3 환산
     uint16_t val3=(uint16_t)(((uint32_t)DutyCycle* 0xFFFFu)/0x8000u);
     Pwm1_SetCompare(val3);

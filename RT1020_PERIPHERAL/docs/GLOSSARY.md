@@ -181,3 +181,14 @@
 | **Std_ReturnType** | **St**an**d**ard Return Type | AUTOSAR 표준 반환형(E_OK/E_NOT_OK) |
 | **CanIf / WdgM** | **Can** **I**nter**f**ace / **Wdg** **M**anager | CAN 스택 상위 / 워치독 alive 감시 상위 |
 | **ISO 26262** | — | 자동차 기능안전 표준 (Wdg/WdgM 이 기본 빌딩블록) |
+
+### AUTOSAR Can 스택 용어 (Can_Write facade)
+
+| 약어 | 풀이 | 설명 |
+|---|---|---|
+| **PDU** | **P**rotocol **D**ata **U**nit | 프로토콜의 데이터 단위 = 헤더(ID/DLC) + 페이로드. 한 프레임 분의 정보 묶음. `Can_PduType`(id/length/sdu)이 이것 |
+| **HOH** | **H**ardware **O**bject **H**andle | 하드웨어 메시지 오브젝트(=CAN 메시지버퍼/메일박스)를 가리키는 추상 핸들. "몇 번 MB냐"를 지칭 |
+| **Hth** | **H**ardware **T**ransmit **H**andle | HOH 중 **송신용** — TX 메일박스. `Can_Write(Hth, PduInfo)` 의 그 인자 (레벨1: Hth=0 → MB0) |
+| **Hrh** | **H**ardware **R**eceive **H**andle | HOH 중 **수신용** — RX 메일박스 (Hth 의 짝) |
+| **sdu / SDU** | **S**ervice **D**ata **U**nit | PDU 의 페이로드(데이터 본문). `Can_PduType.sdu` = 데이터 포인터 |
+- 상위 CanIf 가 논리 PDU ↔ 하드웨어 오브젝트(HOH)를 매핑 → `Can_Write` = "이 PDU 를(PduInfo) 이 슬롯으로(Hth) 보내라". 컨트롤러별 MB 차이를 HOH 로 감춰 이식성 확보 (register `Can1_Send` 위에 얹은 이유).

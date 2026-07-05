@@ -1,33 +1,78 @@
-# LPSPI Bare-metal Driver — i.MX RT1020
+# i.MX RT1020 Bare-metal MCAL Drivers
 
-> HAL / SDK / 외부 라이브러리 없이 Reference Manual 만 보고 i.MX RT1020 (Cortex-M7) 의
-> LPSPI 페리페럴을 **register-level 로 직접** 올린 베어메탈 프로젝트입니다.
-> ROM 부팅 체인부터 시작해 CCM 클럭 게이팅 → IOMUXC 핀 muxing → LPSPI 마스터 init →
-> polled 송신까지, 각 단계를 보드에서 실물 검증하며 쌓아 올렸습니다.
+> HAL / SDK / 외부 라이브러리 **없이** Reference Manual 만 보고 i.MX RT1020 (Cortex-M7) 의
+> 주요 페리페럴 7종을 **register-level 로 직접** 올리고, 그 위에 **AUTOSAR MCAL 표준 API** 를 얹은 베어메탈 프로젝트입니다.
+> ROM 부팅 체인부터 시작해, 각 드라이버를 보드에서 **실물 검증**하며 쌓아 올렸습니다.
 
 [![target](https://img.shields.io/badge/target-i.MX_RT1020-blue)]()
 [![arch](https://img.shields.io/badge/arch-Cortex--M7-blue)]()
-[![peripheral](https://img.shields.io/badge/peripheral-LPSPI1_master-orange)]()
+[![drivers](https://img.shields.io/badge/MCAL_drivers-7-orange)]()
+[![layer](https://img.shields.io/badge/register→IRQ→DMA→AUTOSAR-4_layer-brightgreen)]()
 [![deps](https://img.shields.io/badge/HAL%2FSDK_deps-0-success)]()
-[![milestone](https://img.shields.io/badge/milestone-P--1_complete-blueviolet)]()
 
 ---
 
 ## 한눈에
 
-AUTOSAR set 개발 본업의 **SPI Handler / SPI Driver layer** 를 베어메탈에서 register-level 로
-재구현하는 것이 목표입니다. 추상화 계층 없이 RM 의 레지스터 시퀀스를 직접 다뤄,
-"1 byte 가 핀으로 나가기까지 무엇이 어떤 순서로 일어나는가" 를 끝까지 따라갑니다.
+AUTOSAR set 개발 본업의 **MCAL(Microcontroller Abstraction Layer)** 을 베어메탈에서 register-level 로 재구현합니다.
+추상화 계층 없이 RM 의 레지스터 시퀀스를 직접 다뤄, **"신호가 핀으로 나가기까지 무엇이 어떤 순서로 일어나는가"** 를 끝까지 따라갑니다.
 
-주요 특징입니다.
+- **HAL / SDK 를 쓰지 않습니다.** CCM · IOMUXC · 각 페리페럴 레지스터를 RM 보고 직접 세팅.
+- **7개 MCAL 드라이버** 를 register-level 로 구현하고, 각각 **AUTOSAR 표준 API 파사드** 로 감쌌습니다.
+- **CPU 오프로드 사다리** 를 SPI 로 실증: `polling → IRQ → DMA` 를 DWT 사이클 카운터로 정량 비교.
+- **부품 없이 실물 검증**: CAN loopback 송수신 · 워치독 refresh/타임아웃 리셋 · GPT 주기 인터럽트 · QuadTimer cascade.
+- **XIP 캐시 트러블슈팅**: "코드 몇 줄로 증상이 토글되는" 워치독 Heisenbug 를 근본원인(I-cache 미활성)까지 추적·수정 → [트러블슈팅 문서](docs/TROUBLESHOOTING_ICACHE_WATCHDOG.md).
 
-- **HAL / SDK 를 쓰지 않습니다.** CCM, IOMUXC, LPSPI 레지스터를 RM 보고 직접 세팅합니다.
-- **부팅 체인을 직접 세웁니다.** FCB / IVT 부터 `Reset_Handler → main` 까지 (`ROM → 0x60001000 IVT → entry`).
-- **LPSPI 마스터 bring-up 시퀀스를 register-level 로 구현합니다.**
-  `CCM clock → IOMUXC pin → CR[RST] → CFGR1[MASTER] → CCR[SCKDIV] → FCR → CR[MEN] → TCR/TDR 송신`.
-- **단계마다 실물로 검증합니다.** VERID / CFGR1 / CCR / SR readback 과 `SR[TCF]` (전송 완료 플래그) 로
-  각 단계가 칩에서 실제로 동작했음을 UART 로 확인합니다.
-- **shared/ plumbing 을 재사용합니다.** startup / clock / uart / led 등은 SDRAM_SECURE_BOOT 에서 검증된 공통 코드.
+---
+
+## 구현한 MCAL 드라이버
+
+| AUTOSAR | RT1020 IP (RM Ch.) | register 드라이버 핵심 | 무도구 검증 |
+|---|---|---|---|
+| **Spi** | LPSPI (Ch.43) | CCM→IOMUXC→CR/CFGR1/CCR/TCR/FCR, poll/IRQ/DMA | TCF + 3단 사이클 비교 |
+| **Adc** | ADC (Ch.61) | 캘리브레이션 → CFG → HC0 → COCO → R0 | VREFSH 내부채널 ≈ full-scale |
+| **Pwm** | eFlexPWM (Ch.50) | SM0 INIT/VAL1-3 + OUTEN + MCTRL(LDOK/RUN) | SM0CNT 진행 + duty(VAL3) |
+| **Can** | FlexCAN (Ch.40) | Freeze→비트타이밍/LPB→MB → CODE=TX/EMPTY/FULL | **loopback TX→RX 데이터 일치** |
+| **Gpt** | GPT (Ch.47) | CLKSRC/FRR(Restart) + OCR1 + OF1 IRQ | 주기 인터럽트 tick 증가 |
+| **Wdg** | RTWDOG (Ch.53) | unlock→CS/TOVAL, refresh(매직값), SRC_SRSR | **refresh=생존 / 중단=리셋** |
+| **Icu** | QuadTimer (Ch.49) | ch0 사각파 → ch1 cascade 카운트(PCS) | 엣지 카운트 증가 |
+
++ **Mcu / Port / Dio** (CCM / IOMUXC / GPIO) 파사드.
+
+---
+
+## 4계층 아키텍처 (SPI 예시)
+
+한 드라이버를 **네 단계로 점진 구현**하며 각 층의 트레이드오프를 실측했습니다.
+
+```
+[ 응용 ]   main.c — Spi_* 표준 API 만 호출
+              │
+[ facade ]  Spi.c      ← AUTOSAR: Spi_SyncTransmit / Spi_AsyncTransmit / SetAsyncMode
+              │
+[ register] lpspi.c    ← LPSPI1_Send_Byte / _IRQ / _DMA (poll·인터럽트·DMA 3구현)
+              │
+[ HW ]      LPSPI1 레지스터 (CR/CFGR1/CCR/TCR/FCR/DER ...)
+```
+
+CPU 오프로드 정량 비교 (DWT CYCCNT, kick 이후 main 자유 사이클):
+
+| 방식 | 전송 중 CPU 점유 | 인터럽트 횟수 |
+|---|---|---|
+| polling | 전송 내내 묶임 (~10만 cyc) | 0 |
+| IRQ | watermark 때만 깨움 | 수 회 |
+| DMA | kick 후 자유, 완료 1회만 | 1 |
+
+나머지 6개 드라이버도 같은 방식으로 register 층 위에 표준 API 파사드를 얹었습니다.
+모듈마다 API 모양이 달라(`Pwm_SetDutyCycle` / `Adc_ReadGroup`(그룹+버퍼) / `Can_Write`(HOH+PDU) / `Wdg_SetTriggerCondition`) — 그 차이를 직접 구현한 것이 학습 포인트입니다.
+
+---
+
+## 트러블슈팅 하이라이트 — 워치독 무한 리셋 = I-cache/XIP 문제
+
+Gpt 파사드를 추가하자 워치독이 무한 리셋. 워치독 코드는 멀쩡했고, 범인은 **I-cache 가 꺼진 채 flash XIP 실행**이라 `delay_busy` 루프의 실행시간이 **코드 주소 정렬에 의존**한 것이었습니다(둘째 delay 루프가 fetch-line 경계에 걸쳐 >2초 → 타임아웃).
+
+여러 오답(타이밍/LED/reconfig 윈도우/GPT IRQ)을 **하드웨어 계측으로 반증**하고, `main` 진입 전 **I-cache enable** 로 결정적 실행을 확보해 해결. 전 과정을 [docs/TROUBLESHOOTING_ICACHE_WATCHDOG.md](docs/TROUBLESHOOTING_ICACHE_WATCHDOG.md) 에 포스트모템으로 정리했습니다.
 
 ---
 
@@ -35,32 +80,33 @@ AUTOSAR set 개발 본업의 **SPI Handler / SPI Driver layer** 를 베어메탈
 
 ```bash
 ./build.sh        # arm-none-eabi-gcc 로 단일 이미지 빌드 (build/rt1020_peripheral.{elf,bin})
-./flash_mcu.sh    # pyocd 로 0x60000000 에 flash (-t mimxrt1020)
+./flash_mcu.sh    # pyocd 로 chip erase + 0x60000000 flash (-t mimxrt1020)
 
 # 시리얼 모니터 (별도 터미널)
 gtkterm -p /dev/ttyACM0 -s 115200
-# 보드 SW7 reset → 부팅 + LPSPI bring-up 로그 + LED blink 확인
 ```
 
 기대 출력 (요약):
 
 ```
-[PERI] hello from main()
-[PERI] LPSPI1 pins muxed (ALT1)
-[PERI] LPSPI1 CFGR1 = 0x00000001     # MASTER
-[PERI] LPSPI1 CCR   = 0x00000082     # SCKDIV=130, SCK≈1MHz
-[PERI] LPSPI1 SR    = 0x00000001     # TDF
-[PERI] TX 0xA5 ...
-[PERI] TX OK (TCF set)               # 송신 엔진 동작 검증
+[Spi] poll cyc = 0x0001A0..  / irq cyc = 0x00..  / dma cyc = 0x00..
+[Adc] ReadGroup = OK   VREFSH R0 = 0x00000FF4
+[Pwm] duty 25% set, VAL3 = 0x00003FFF
+[Can] loopback = OK (TX -> RX data match)   write(HOH=0) = OK
+[Gpt] CNT advancing = YES
+[Icu] CNTR advancing = YES
+[PERI] beat 0x.. / [Gpt] tick = 0x..     # 주기 인터럽트 + 워치독 refresh 생존
 ```
 
 ---
 
 ## 문서
 
-- **[docs/LPSPI_NOTES.md](docs/LPSPI_NOTES.md)** — RM Chapter 43(LPSPI) / 14(CCM) / 11(IOMUXC) 정리.
-  레지스터 메모리 맵, 비트 필드, 클럭 트리, 핀 매핑, bring-up 시퀀스, 단계별 검증 기준.
-  "코드 짜기 전 지도" 로서 P-1a 에서 작성 후 각 단계마다 갱신.
+- **[docs/GLOSSARY.md](docs/GLOSSARY.md)** — 프로젝트 전체 약어 (레지스터/비트/AUTOSAR)
+- **[docs/TROUBLESHOOTING_ICACHE_WATCHDOG.md](docs/TROUBLESHOOTING_ICACHE_WATCHDOG.md)** — 워치독/I-cache 근본원인 추적 포스트모템
+- RM 정리 노트 (드라이버별 레지스터 맵 · 시퀀스 · 검증 기준):
+  [LPSPI](docs/LPSPI_NOTES.md) · [ADC](docs/ADC_NOTES.md) · [PWM](docs/PWM_NOTES.md) ·
+  [CAN](docs/CAN_NOTES.md) · [GPT](docs/GPT_NOTES.md) · [RTWDOG](docs/WDG_NOTES.md) · [QuadTimer](docs/ICU_NOTES.md)
 
 ---
 
@@ -69,45 +115,23 @@ gtkterm -p /dev/ttyACM0 -s 115200
 ```
 RT1020_PERIPHERAL/
 ├── CMakeLists.txt              # 단일 이미지 빌드 (IS_BOOTLOADER 분기 = flash XIP)
-├── arm-none-eabi-toolchain.cmake
 ├── build.sh / flash_mcu.sh
-├── linker/peripheral.ld        # 단일 이미지 메모리 맵 (FCB/IVT/FLASH/DTCM/ITCM)
+├── linker/peripheral.ld        # 메모리 맵 (FCB/IVT/FLASH/DTCM/ITCM)
+├── include/                    # AUTOSAR facade 헤더 (Spi/Adc/Pwm/Can/Gpt/Wdg/Icu, Std_Types ...)
 ├── src/
-│   ├── boot_header.c           # IVT + boot_data (ROM 이 읽는 부팅 헤더)
-│   └── main.c                  # LPSPI1 clock/pin/init/send + bring-up 로그
-├── shared/                     # 검증된 공통 plumbing (startup, clock, uart, led, regs...)
-└── docs/LPSPI_NOTES.md         # RM 정리 노트
+│   ├── main.c                  # 7개 드라이버 데모 하네스 + 표준 API 호출
+│   ├── Spi.c  / lpspi.c        # SPI facade / register (4계층 모범)
+│   ├── Adc.c Pwm.c Can.c Gpt.c Wdg.c Icu.c   # register + facade (모듈당 1파일)
+│   ├── Mcu.c Port.c Dio.c      # CCM/IOMUXC/GPIO 파사드
+│   └── boot_header.c           # IVT + boot_data (ROM 부팅 헤더)
+├── shared/                     # 검증된 공통 plumbing (startup, clock, uart, led, regs, cache ...)
+└── docs/                       # RM 정리 노트 + 용어집 + 트러블슈팅
 ```
 
 ---
 
-## 진행 상황
+## 안 쓴 이유 / 한계
 
-### 완료된 항목
-
-- **P-0 부팅 체인** — `boot_header.c`(IVT) + `peripheral.ld`(단일 이미지 맵) + `CMakeLists.txt`.
-  ROM → FCB(0x60000000) → IVT(0x60001000) → `Reset_Handler` → `main`. UART hello + LED blink 실물 확인.
-- **P-1 LPSPI1 마스터 bring-up (register-level)**
-  - P-1a: RM Chapter 43 정리 → `docs/LPSPI_NOTES.md`
-  - P-1b: CCM 클럭 — `CCGR1[CG0]` gate ON, root PLL2/4 = 132MHz. VERID read 로 버스 생존 검증
-  - P-1c: IOMUXC — LPSPI1 `SCK/PCS0/SDO/SDI` → `GPIO_AD_B0_10~13` ALT1
-  - P-1d: init 시퀀스 — `CR[RST] → CFGR1[MASTER] → CCR[SCKDIV] → FCR → CR[MEN]`, readback 검증
-  - P-1e: TX-only 송신 — `TCR`(8bit, RXMSK) + `TDR`, `SR[TCF]` / `FSR` polled 검증
-
-### 다음 단계 (미정 — 방향 고민 중)
-
-- **P-1f** — 외부 SPI device 연결 후 RX 까지 (read ID 등 진짜 송수신). *device + 헤더 납땜 필요.*
-- **P-2** — TX/RX FIFO burst (watermark 활용). *부품 불요.*
-- **P-3** — IRQ 기반 송수신 + cycle counter. *부품 불요. AUTOSAR 인터럽트 기반 SPI Handler narrative 에 직결.*
-
----
-
-## 주의 / 현재 범위의 한계
-
-- **TX-only 검증입니다.** MIMXRT1020-EVK 의 Arduino 헤더(LPSPI1 이 나오는 J19)가 unpopulated 라
-  loopback 점퍼를 바로 못 꽂습니다. 그래서 P-1e 는 송신 경로를 `SR[TCF]` / `FSR` 로 검증하고,
-  RX / loopback 은 device 연결(P-1f) 시점으로 미뤘습니다. (J19: D11=SDO, D12=SDI)
-- **클럭은 ROM 기본값을 사용합니다.** startup 의 `IS_BOOTLOADER` 분기(flash XIP)를 재사용하므로
-  `Clock_Init_132MHz()` 를 호출하지 않습니다. LPSPI 기능 클럭은 ROM 기본 PLL2/4 = 132MHz.
-- **`shared/` 에 secure-boot 잔재가 포함됩니다.** CMake 의 `file(GLOB)` 가 전부 컴파일하지만
-  `--gc-sections` 로 미사용 코드(RSA/SHA 등)는 최종 이미지에서 제거됩니다.
+- **HAL/SDK 미사용**: 베어메탈 + 레지스터 원리 학습이 목적. 실무 양산은 검증된 HAL 권장.
+- **AUTOSAR 파사드는 레벨1**: 표준 API 의 "모양"과 계층 분리를 시연하는 수준(설정 테이블/전체 상태머신은 생략).
+- **외부 device 검증은 loopback/내부채널로 대체**: EVK 헤더 unpopulated 라 SPI 실device·ADC 외부 pot·Icu 실캡처는 핀헤더/로직애널라이저 확보 시 확장 예정.

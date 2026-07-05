@@ -80,7 +80,6 @@ int LPSPI1_Send_Buffer(const uint8_t *buf, uint32_t n, uint32_t *peak_out)
     LPSPI1_SR = (1u << 10);              /*stale TCF clear*/
     LPSPI1_TCR = (1u << 19) | (7u << 0); /*8bit, RXMSK*/
 
-    uint32_t peak = 0;
     for (uint32_t i = 0; i < n; ++i)
     {
         // /*FIFO가 가득 차면 자리가 날때까지 반복하고, 그 외에는 계속 push*/

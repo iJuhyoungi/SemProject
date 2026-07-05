@@ -110,8 +110,7 @@ int main(void)
     UART1_SendString("[Pwm] duty 25% set, VAL3 = ");
     UART1_SendHex32(FLEXPWM1_SM0VAL3);
     UART1_SendString("\r\n");
-    UART1_SendString(Pwm1_GetCount() != Pwm1_GetCount()?"[Pwm] running\r\n" : "[Pwm] running\r\n");
-    
+
     uint16_t c1=Pwm1_GetCount();
     delay_busy(100000);
     uint16_t c2=Pwm1_GetCount();
@@ -143,11 +142,6 @@ int main(void)
     UART1_SendString("[Can] write(HOH=0) = ");
     UART1_SendString(w == E_OK ? "OK\r\n" : "FAIL\r\n");
 
-    // Gpt1_Init();
-    // uint32_t g1=Gpt1_GetCount();
-    // uint32_t g2=Gpt1_GetCount();
-    // UART1_SendString("[Gpt] CNT advancing = ");
-    // UART1_SendString(g2!=g1?"YES\r\n":"NO\r\n");
     Gpt_Init(0);
     uint32_t g1=Gpt1_GetCount();
     delay_busy(100000);

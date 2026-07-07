@@ -8,7 +8,7 @@
 #define LENGTH_REINIT           (1u<<5)     /* COMP1 도달 시 LOAD 로 재초기화 */
 #define OUTMODE_TOGGLE          (3u<<0)     /* OUTMODE=011: compare 시 OFLAG 토글 */
 
-void Icu1_Init(void)
+void Icu1_Init(uint16_t gen_half_period)
 {
     //클럭 게이트
     CCM_CCGR6|=(3u<<26);
@@ -16,7 +16,7 @@ void Icu1_Init(void)
     //ch0=>사각파 생성기
     TMR1_CTRL(0)=0u;
     TMR1_LOAD(0)=0u;
-    TMR1_COMP1(0)=0x0FFFu;              // toggle 간격
+    TMR1_COMP1(0)=gen_half_period;      // toggle 간격
     TMR1_SCTRL(0)=0u;
     TMR1_CTRL(0)=CM_PRIMARY_RISING|PCS_BUSCLK_DIV8|LENGTH_REINIT|OUTMODE_TOGGLE;
 
@@ -36,11 +36,24 @@ uint16_t Icu1_GetEdgeCount(void)
 #include "Det.h"
 
 static Icu_DriverStateType Icu_DriverState = ICU_DRV_UNINIT;
+static const Icu_ConfigType *Icu_ConfigPtr = 0;
 
 void Icu_Init(const Icu_ConfigType *ConfigPtr)
 {
-    (void)ConfigPtr;
-    Icu1_Init();
+#if (ICU_DEV_ERROR_DETECT == STD_ON)
+    if (ConfigPtr == 0)
+    {
+        Det_ReportError(ICU_MODULE_ID, 0u, ICU_SID_INIT, ICU_E_PARAM_POINTER);
+        return;
+    }
+    if (Icu_DriverState == ICU_DRV_INITIALIZED)
+    {
+        Det_ReportError(ICU_MODULE_ID, 0u, ICU_SID_INIT, ICU_E_ALREADY_INITIALIZED);
+        return;
+    }
+#endif
+    Icu_ConfigPtr = ConfigPtr;
+    Icu1_Init(ConfigPtr->gen_half_period);
     Icu_DriverState = ICU_DRV_INITIALIZED;
 }
 

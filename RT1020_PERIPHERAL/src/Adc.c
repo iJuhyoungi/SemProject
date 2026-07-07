@@ -1,7 +1,6 @@
 #include "Adc.h"
 #include "rt1020_regs.h"
 
-#define ADC_GROUP0_CHANNEL 0x19u
 
 int ADC1_Init(void)
 {
@@ -39,10 +38,24 @@ uint32_t ADC1_Read(uint8_t channel)
 #include "Det.h"
 
 static Adc_DriverStateType Adc_DriverState = ADC_DRV_UNINIT;
+static const Adc_ConfigType *Adc_ConfigPtr = 0;
 
 void Adc_Init(const Adc_ConfigType *ConfigPtr)
 {
-    (void)ConfigPtr;
+#if (ADC_DEV_ERROR_DETECT == STD_ON)
+    if (ConfigPtr == 0)
+    {
+        Det_ReportError(ADC_MODULE_ID, 0u, ADC_SID_INIT, ADC_E_PARAM_POINTER);
+        return;
+    }
+    if (Adc_DriverState == ADC_DRV_INITIALIZED)
+    {
+        Det_ReportError(ADC_MODULE_ID, 0u, ADC_SID_INIT, ADC_E_ALREADY_INITIALIZED);
+        return;
+    }
+#endif
+
+    Adc_ConfigPtr = ConfigPtr;
     ADC1_Init();
     Adc_DriverState = ADC_DRV_INITIALIZED;
 
@@ -67,7 +80,7 @@ Std_ReturnType Adc_ReadGroup(Adc_GroupType Group, Adc_ValueGroupType *DataBuffer
     }
 #endif
 
-    DataBufferPtr[0]=(Adc_ValueGroupType)ADC1_Read(ADC_GROUP0_CHANNEL);
+    DataBufferPtr[0]=(Adc_ValueGroupType)ADC1_Read(Adc_ConfigPtr->group0_channel);
     return E_OK;
 }
 

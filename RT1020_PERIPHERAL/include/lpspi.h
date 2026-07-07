@@ -6,7 +6,7 @@
 /* LPSPI1 드라이버 API */
 void LPSPI1_Clock_Enable(void);
 void LPSPI1_Pin_Init(void);
-void LPSPI1_Master_Init(void);
+void LPSPI1_Master_Init(uint32_t sckdiv);   /* SCK = funcclk/(prescale×(sckdiv+2)) */
 int LPSPI1_Send_Byte(uint8_t b);
 int LPSPI1_Send_Buffer(const uint8_t *buf, uint32_t n, uint32_t *peak_out);
 void LPSPI1_Send_IRQ(const uint8_t *buf, uint32_t n);

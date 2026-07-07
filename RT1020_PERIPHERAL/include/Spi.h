@@ -59,6 +59,7 @@ Spi_SeqResultType Spi_GetSequenceResult(Spi_SequenceType Sequence);
 #define SPI_E_PARAM_POINTER     0x10u
 #define SPI_E_UNINIT            0x1Au
 #define SPI_E_SEQ_PENDING       0x2Au
+#define SPI_E_ALREADY_INITIALIZED 0x4Au     /* Spi 는 0x4A — 모듈마다 대역이 다름 */
 
 
 #endif /* SPI_H */

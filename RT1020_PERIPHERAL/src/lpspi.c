@@ -30,7 +30,7 @@ void LPSPI1_Pin_Init(void)
     IOMUXC_SW_PAD_CTL_PAD_GPIO_SD_B0_02 = 0x1; /*SDI 선택 입력 레지스터, 0: LPSPI1_SDI, 1: GPIO*/
 }
 
-void LPSPI1_Master_Init(void)
+void LPSPI1_Master_Init(uint32_t sckdiv)
 {
     /*soft reset pulse*/
     LPSPI1_CR = (1 << 1); // RST bit set, 소프트웨어 리셋 트리거
@@ -41,9 +41,9 @@ void LPSPI1_Master_Init(void)
 
     /**
      * SCK period = (SCKDIV+2)*(funcclk/prescale)
-     * funcclk=132MHz, prescale=1 -> SCKDIV=130 -> SCK=1MHz
+     * funcclk=132MHz, prescale=1 기준. 값은 config 에서 (130 -> SCK≈1MHz)
      */
-    LPSPI1_CCR = (130 << 0);
+    LPSPI1_CCR = (sckdiv << 0);
 
     /**
      * TXWATER=3: TX FIFO count <= 3 으로 떨어지면 TDF set (refill 신호).

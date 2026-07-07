@@ -11,7 +11,7 @@
 volatile uint32_t g_gpt_tick;
 static Gpt_DriverStateType Gpt_DriverState = GPT_DRV_UNINIT;
 
-void Gpt1_Init(void)
+void Gpt1_Init(uint32_t prescaler, uint32_t period_ticks)
 {
     CCM_CCGR1 |= (3u << 20) | (3u << 22);
 
@@ -22,8 +22,8 @@ void Gpt1_Init(void)
 
     GPT1_CR = GPT_CLKSRC_IPG | GPT_ENMOD;
 
-    GPT1_PR = 23u;
-    GPT1_OCR1 = 1000000u;
+    GPT1_PR = prescaler;
+    GPT1_OCR1 = period_ticks;
 
     g_gpt_tick = 0;
 
@@ -53,10 +53,24 @@ uint32_t Gpt1_GetTick(void)
 }
 
 /* ===== AUTOSAR Wrapping ===== */
+static const Gpt_ConfigType *Gpt_ConfigPtr = 0;
 void Gpt_Init(const Gpt_ConfigType *ConfigPtr)
 {
-    (void)ConfigPtr;
-    Gpt1_Init();
+#if (GPT_DEV_ERROR_DETECT == STD_ON)
+    if (ConfigPtr == 0)
+    {
+        Det_ReportError(GPT_MODULE_ID, 0u, GPT_SID_INIT, GPT_E_PARAM_POINTER);
+        return;
+    }
+    if (Gpt_DriverState == GPT_DRV_INITIALIZED)
+    {
+        Det_ReportError(GPT_MODULE_ID, 0u, GPT_SID_INIT, GPT_E_ALREADY_INITIALIZED);
+        return;
+    }
+#endif
+
+    Gpt_ConfigPtr = ConfigPtr;
+    Gpt1_Init(ConfigPtr->prescaler, ConfigPtr->period_ticks);
     Gpt_DriverState = GPT_DRV_INITIALIZED;
 }
 

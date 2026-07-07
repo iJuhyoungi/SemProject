@@ -14,7 +14,7 @@
 
 #define SRSR_WDG3 (1u << 7)
 
-void Wdg1_Init(uint32_t timeout_ticks)
+void Wdg1_Init(uint16_t timeout_ticks, uint16_t window_ticks)
 {
     // 레지스터 접근용 클럭 게이트
     CCM_CCGR5 |= (3u << 4);
@@ -28,8 +28,8 @@ void Wdg1_Init(uint32_t timeout_ticks)
     }
 
     // 설정: 32kHz LPO + EN + UPDATE + 32bit cmd, window off
-    RTWDG_TOVAL = timeout_ticks; // 32kHz 기준(0x18000)
-    RTWDG_WIN = 0u;
+    RTWDG_TOVAL = timeout_ticks; // 32kHz 기준, 16-bit
+    RTWDG_WIN = window_ticks;    // CS[WIN] 안 켜면 값만 준비 (현재 비활성)
     RTWDG_CS = WDG_CS_EN | WDG_CS_UPDATE | WDG_CS_CMD32EN | WDG_CS_CLK_LPO;
 
     // RCS=1 대기
@@ -50,16 +50,6 @@ uint32_t Wdg1_GetCS(void)
     return RTWDG_CS;
 }
 
-uint32_t Wdg_GetResetCause(void)
-{
-    return SRC_SRSR;
-}
-
-void Wdg_ClearResetCause(void)
-{
-    SRC_SRSR = SRC_SRSR;
-}
-
 uint32_t Wdg1_GetCNT(void)
 {
     return RTWDG_CNT;
@@ -71,11 +61,22 @@ uint32_t Wdg1_GetTOVAL(void)
 }
 
 static Wdg_DriverStateType Wdg_DriverState = WDG_DRV_UNINIT;
+static const Wdg_ConfigType *Wdg_ConfigPtr = 0;
 
 void Wdg_Init(const Wdg_ConfigType *ConfigPtr)
 {
-    (void)ConfigPtr;
-    Wdg1_Init(0xFFFFu);
+#if (WDG_DEV_ERROR_DETECT == STD_ON)
+    if (ConfigPtr == 0) {
+        Det_ReportError(WDG_MODULE_ID, 0u, WDG_SID_INIT, WDG_E_PARAM_POINTER);
+        return;
+    }
+    if (Wdg_DriverState == WDG_DRV_INITIALIZED) {   /* Wdg 는 ALREADY_INITIALIZED 대신 DRIVER_STATE */
+        Det_ReportError(WDG_MODULE_ID, 0u, WDG_SID_INIT, WDG_E_DRIVER_STATE);
+        return;
+    }
+#endif
+    Wdg_ConfigPtr = ConfigPtr;
+    Wdg1_Init(ConfigPtr->timeout_ticks, ConfigPtr->window_ticks);
     Wdg_DriverState = WDG_DRV_INITIALIZED;
 }
 

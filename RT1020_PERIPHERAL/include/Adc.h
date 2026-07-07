@@ -13,7 +13,7 @@ typedef uint8_t Adc_GroupType;
 typedef uint16_t Adc_ValueGroupType;
 typedef struct
 {
-    uint8_t dummy;
+    uint8_t group0_channel;         /* 그룹0 -> 물리 채널 매핑 (0x19=VREFSH 내부채널) */
 } Adc_ConfigType;
 
 typedef enum
@@ -31,6 +31,7 @@ typedef enum
 #define ADC_SID_GETGROUPSTATUS      0x09u
 
 #define ADC_E_UNINIT                0x0Au
+#define ADC_E_ALREADY_INITIALIZED   0x0Du
 #define ADC_E_PARAM_POINTER         0x14u
 #define ADC_E_PARAM_GROUP           0x15u
 

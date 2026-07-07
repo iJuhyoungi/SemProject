@@ -2,7 +2,7 @@
 #define CAN_H
 
 #include <stdint.h>
-int Can1_Init(void); // loopback 모드 initialize(0=OK, 1=timeout)
+int Can1_Init(uint8_t presdiv, uint8_t loopback); // initialize(0=OK, 1=timeout). 비트타이밍·LPB는 인자로
 int Can1_LoopbackTest(void);            // 프레임 1개 TX -> loopback RX -> 데이터 일치 확인
 
 #include "Std_Types.h"
@@ -28,7 +28,8 @@ typedef enum
 
 typedef struct
 {
-    uint8_t dummy;
+    uint8_t presdiv;            /* CTRL1[31:24] 프리스케일러 (loopback 데모라 baud 자유) */
+    uint8_t loopback;           /* CTRL1[30] loopback enable */
 } Can_ConfigType;
 
 void Can_Init(const Can_ConfigType *config);

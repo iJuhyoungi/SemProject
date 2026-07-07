@@ -5,13 +5,14 @@
 #include "Std_Types.h"
 
 // register level
-void Pwm1_Init(void);
+void Pwm1_Init(uint16_t period, uint16_t initial_val3);         /* VAL1, VAL3 raw tick */
 uint16_t Pwm1_GetCount(void);
 
 // AUTOSAR Pwm Wrapping
 typedef uint8_t Pwm_ChannelType;
 typedef struct {
-    uint8_t dummy;
+    uint16_t period;        /* SM0VAL1 = 주기 top (raw tick) */
+    uint16_t initial_duty;  /* 표준 0x8000=100% 스케일 (SWS PwmDutycycleDefault) */
 }Pwm_ConfigType;        // level1: minimum
 
 void Pwm_Init(const Pwm_ConfigType *ConfigPtr);
@@ -24,6 +25,8 @@ void Pwm_SetDutyCycle(Pwm_ChannelType Channel, uint16_t DutyCycle);         // 0
 
 #define PWM_E_UNINIT            0x11u
 #define PWM_E_PARAM_CHANNEL     0x12u
+#define PWM_E_ALREADY_INITIALIZED 0x14u
+#define PWM_E_PARAM_POINTER       0x15u
 
 typedef enum
 {

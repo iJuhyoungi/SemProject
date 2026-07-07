@@ -5,14 +5,18 @@
 #include "Std_Types.h"
 
 /* --- register층 (기존) --- */
-void Gpt1_Init(void);
+void Gpt1_Init(uint32_t prescaler, uint32_t period_ticks);
 uint32_t Gpt1_GetCount(void);
 uint32_t Gpt1_GetTick(void);
 
 /* --- AUTOSAR Wrapping --- */
 typedef uint8_t  Gpt_ChannelType;
 typedef uint32_t Gpt_ValueType;
-typedef struct { uint8_t dummy; } Gpt_ConfigType;
+typedef struct
+{
+    uint32_t prescaler;         /* GPT1_PR 값 (÷(N+1)) */
+    uint32_t period_ticks;      /* GPT1_OCR1 = 주기 */
+} Gpt_ConfigType;
 
 void          Gpt_Init(const Gpt_ConfigType *ConfigPtr);
 Gpt_ValueType Gpt_GetTimeElapsed(Gpt_ChannelType Channel);
@@ -30,7 +34,9 @@ void          Gpt_DisableNotification(Gpt_ChannelType Channel);
 #define GPT_SID_DISABLENOTIF    0x08u
 
 #define GPT_E_UNINIT        0x0Au
+#define GPT_E_ALREADY_INITIALIZED 0x0Du
 #define GPT_E_PARAM_CHANNEL 0x14u
+#define GPT_E_PARAM_POINTER       0x16u
 typedef enum
 {
     GPT_DRV_UNINIT = 0,

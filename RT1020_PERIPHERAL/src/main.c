@@ -10,6 +10,8 @@
 #include "Gpt.h"
 #include "Wdg.h"
 #include "Icu.h"
+#include "Mcu.h"
+#include "Cfg.h"
 
 /* busy-wait */
 static void delay_busy(volatile uint32_t n)
@@ -35,7 +37,7 @@ int main(void)
 
     Dio_Init();
     dwt_init();
-    Spi_Init(0);
+    Spi_Init(&Spi_Config);
 
     static const uint8_t buf16[16] = {
         0xC0, 0xC1, 0xC2, 0xC3, 0xC4, 0xC5, 0xC6, 0xC7,
@@ -99,7 +101,7 @@ int main(void)
     UART1_SendString("[Det-test] expect 3 reports:\r\n");
     Adc_ValueGroupType adc_buf[1];
     (void)Adc_ReadGroup(0, adc_buf);
-    Adc_Init(0);
+    Adc_Init(&Adc_Config);
     (void)Adc_ReadGroup(7, adc_buf);
     (void)Adc_ReadGroup(0, (Adc_ValueGroupType *)0);
     
@@ -110,7 +112,7 @@ int main(void)
     UART1_SendHex32(adc_buf[0]);
     UART1_SendString("\r\n");
 
-    Pwm_Init(0);
+    Pwm_Init(&Pwm_Config);
     Pwm_SetDutyCycle(0,0x2000);
     UART1_SendString("[Pwm] duty 25% set, VAL3 = ");
     UART1_SendHex32(FLEXPWM1_SM0VAL3);
@@ -127,7 +129,7 @@ int main(void)
     UART1_SendString(c1 != c2 ? "\r\n[Pwm] running (counter advancing)\r\n"
                                 : "\r\n[Pwm] NOT running\r\n");
 
-    Can_Init(0);
+    Can_Init(&Can_Config);
     UART1_SendString("[Can] init = OK\r\n");
     UART1_SendString("[Can] MCR  = ");
     UART1_SendHex32(FLEXCAN1_MCR);
@@ -152,7 +154,7 @@ int main(void)
     Can_PduType bad={.swPduHandle=0, .length=9, .id=0x123, .sdu=big9};
     (void)Can_Write(0,&bad);
 
-    Gpt_Init(0);
+    Gpt_Init(&Gpt_Config);
     uint32_t g1=Gpt1_GetCount();
     delay_busy(100000);
     uint32_t g2=Gpt1_GetCount();
@@ -164,14 +166,14 @@ int main(void)
     UART1_SendHex32(Gpt_GetTimeRemaining(0));
     UART1_SendString("\r\n");
 
-    uint32_t cause = Wdg_GetResetCause();
-    int by_wdg = (cause >> 7) & 1u;             // bit7=wdg3_rst_b
-    UART1_SendString("[Wdg] reset cause SRSR = ");
-    UART1_SendHex32(cause);
+    Mcu_ResetType rst = Mcu_GetResetReason();
+    int by_wdg = (rst == MCU_WATCHDOG_RESET);   /* 비트 지식이 표준 enum 으로 승격 */
+    UART1_SendString("[Mcu] reset SRSR = ");
+    UART1_SendHex32(Mcu_GetResetRawValue());
     UART1_SendString(by_wdg ? "  <- watchdog reset!\r\n" : "\r\n");
-    Wdg_ClearResetCause();
+    Mcu_ClearResetReason();
 
-    Icu_Init(0);
+    Icu_Init(&Icu_Config);
     uint16_t e1=Icu_GetEdgeNumbers(0);
     delay_busy(100000);
     uint16_t e2=Icu_GetEdgeNumbers(0);
@@ -179,7 +181,7 @@ int main(void)
     UART1_SendString(e2 != e1 ? "YES\r\n" : "NO\r\n");
 
 
-    Wdg_Init(0);                /* 16비트 */
+    Wdg_Init(&Wdg_Config);
     UART1_SendString("[Wdg] CS    = ");
     UART1_SendHex32(Wdg1_GetCS());
     UART1_SendString("\r\n");

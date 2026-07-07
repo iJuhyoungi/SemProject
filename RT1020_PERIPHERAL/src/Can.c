@@ -8,7 +8,7 @@
 
 static Can_DriverStateType Can_DriverState = CAN_DRV_UNINIT;
 
-int Can1_Init(void)
+int Can1_Init(uint8_t presdiv, uint8_t loopback)
 {
     // PE 클럭 소스 = osc 24MHz (게이트 off -> mux 변경 -> on)
     CCM_CCGR0 &= ~((3u << 14) | (3u << 16));                            /* CG7·CG8 off */
@@ -37,9 +37,9 @@ int Can1_Init(void)
 
     /**
      * 비트타이밍 + loopback(freeze에서만 쓰기 가능)
-     * PRESDIV=63, RJW=2, PSEG1=3, PSEG2=3, LPB=1, PROPSEG=2 (loopback 이라 baud 는 자유)
+     * PRESDIV·LPB는 config에서, RJW=2, PSEG1=3, PSEG2=3, PROPSEG=2
      */
-    FLEXCAN1_CTRL1 = (63u << 24) | (2u << 22) | (3u << 19) | (3u << 16) | (1u << 12) | (2u << 0);
+    FLEXCAN1_CTRL1 = ((uint32_t)presdiv << 24) | (2u << 22) | (3u << 19) | (3u << 16) | ((loopback ? 1u : 0u) << 12) | (2u << 0);
 
     /* Message Buffer 초기화 : MAXMB=15, 16개의 MB 모두 INACTIVE(CODE=0) */
     FLEXCAN1_MCR = (FLEXCAN1_MCR & ~0x7Fu) | 15u;
@@ -109,10 +109,22 @@ void Can1_Send(uint8_t mb, uint32_t id, uint8_t dlc, const uint8_t *sdu)
     tx[0]=(0xCu<<24)|((uint32_t)dlc<<16);          // word0: CODE=TX(0xC), DLC -> 전송 시작
 }
 
+static const Can_ConfigType *Can_ConfigPtr = 0;
 void Can_Init(const Can_ConfigType *config)
 {
-    (void)config;
-    Can1_Init();
+    // (void)config;
+#if (CAN_DEV_ERROR_DETECT == STD_ON)
+    if(config==0){
+        Det_ReportError(CAN_MODULE_ID, 0u, CAN_SID_INIT, CAN_E_PARAM_POINTER);
+        return;
+    }
+    if(Can_DriverState==CAN_DRV_INITIALIZED){
+        Det_ReportError(CAN_MODULE_ID, 0u, CAN_SID_INIT, CAN_E_TRANSITION);
+        return;
+    }
+#endif
+    Can_ConfigPtr=config;
+    Can1_Init(config->presdiv, config->loopback);
     Can_DriverState = CAN_DRV_INITIALIZED;
 }
 

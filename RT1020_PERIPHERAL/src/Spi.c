@@ -14,13 +14,25 @@ static Spi_AsyncModeType s_async_mode = SPI_ASYNC_INTERRUPT;
 static uint8_t s_ib_buf[SPI_IB_SIZE];
 static uint16_t s_ib_len;
 
+static const Spi_ConfigType *Spi_ConfigPtr = 0;
+
 void Spi_Init(const Spi_ConfigType *ConfigPtr)
 {
-    (void)ConfigPtr;
+#if (SPI_DEV_ERROR_DETECT == STD_ON)
+    if (ConfigPtr == 0) {
+        Det_ReportError(SPI_MODULE_ID, 0u, SPI_SID_INIT, SPI_E_PARAM_POINTER);
+        return;
+    }
+    if (s_status != SPI_UNINIT) {   /* 재-Init: Spi 는 이미 자기 상태(s_status)가 있다 */
+        Det_ReportError(SPI_MODULE_ID, 0u, SPI_SID_INIT, SPI_E_ALREADY_INITIALIZED);
+        return;
+    }
+#endif
+    Spi_ConfigPtr = ConfigPtr;
 
     Mcu_InitClock();                // Clock gate
     Port_Init();                    // 핀 mux (Port)
-    LPSPI1_Master_Init();           // LPSPI 설정
+    LPSPI1_Master_Init(ConfigPtr->sckdiv);  // LPSPI 설정 (SCK 속도는 config 에서)
 
     s_ib_len = 0;
     s_status = SPI_IDLE;

@@ -21,6 +21,7 @@ AUTOSAR set 개발 본업의 **MCAL(Microcontroller Abstraction Layer)** 을 베
 - **7개 MCAL 드라이버** 를 register-level 로 구현하고, 각각 **AUTOSAR 표준 API 파사드** 로 감쌌습니다.
 - **CPU 오프로드 사다리** 를 SPI 로 실증: `polling → IRQ → DMA` 를 DWT 사이클 카운터로 정량 비교.
 - **부품 없이 실물 검증**: CAN loopback 송수신 · 워치독 refresh/타임아웃 리셋 · GPT 주기 인터럽트 · QuadTimer cascade.
+- **실무 MCAL 인프라 3종 재현**: DET(개발 에러 신고) · post-build 스타일 설정 테이블 · **WdgM alive supervision** — 파사드 위에 표준 BSW 패턴까지 얹었습니다.
 - **XIP 캐시 트러블슈팅**: "코드 몇 줄로 증상이 토글되는" 워치독 Heisenbug 를 근본원인(I-cache 미활성)까지 추적·수정 → [트러블슈팅 문서](docs/TROUBLESHOOTING_ICACHE_WATCHDOG.md).
 
 ---
@@ -68,6 +69,21 @@ CPU 오프로드 정량 비교 (DWT CYCCNT, kick 이후 main 자유 사이클):
 
 ---
 
+## AUTOSAR 확장 — 실무 MCAL 인프라 3종
+
+파사드 완성 후, 실제 MCAL 코드의 "모양"을 결정하는 세 가지 표준 패턴을 SWS 기준으로 재현했습니다.
+
+| 패턴 | 구현 | 실증 |
+|---|---|---|
+| **DET** (Default Error Tracer) | 7개 모듈 API 입구에 UNINIT/PARAM/상태위반 guard + `Det_ReportError` 신고 (컴파일 스위치로 양산 빌드에서 제거 가능) | 의도적 오호출 → `mod/api/err` 신고를 UART 로 수신. main 의 `Can_Init(0)` 누락 실수를 신고 로그만으로 30초 진단 |
+| **Post-build Config** | 모든 `Xxx_Init(const Xxx_ConfigType*)` 가 `src/Cfg.c` 의 설정 테이블을 참조 — 드라이버와 설정의 물리적 분리 | **Cfg.c 만 수정**해 Gpt tick·Icu 엣지레이트 2배, SPI SCK 1MHz→514kHz 를 보드에서 실측 (드라이버 .c 무수정) |
+| **WdgM** (alive supervision) | 응용은 체크포인트 증언만, GPT tick ISR 이 창당 보고 횟수를 판정해 범위 밖이면 굶겨 리셋 | hang(침묵→FAILED→EXPIRED→리셋)과 **폭주(과다 보고→FAILED)** 를 모두 검출 — 직접 refresh 로는 불가능한 감시 |
+
+각 단계가 다음 단계의 부품이 됩니다: DET 의 상태변수 → Config 의 NULL/재Init 거부 → WdgM 의 판정 기반.
+상세: [DET](docs/DET_NOTES.md) · [Config](docs/CONFIG_NOTES.md) · [WdgM](docs/WDGM_NOTES.md)
+
+---
+
 ## 트러블슈팅 하이라이트 — 워치독 무한 리셋 = I-cache/XIP 문제
 
 Gpt 파사드를 추가하자 워치독이 무한 리셋. 워치독 코드는 멀쩡했고, 범인은 **I-cache 가 꺼진 채 flash XIP 실행**이라 `delay_busy` 루프의 실행시간이 **코드 주소 정렬에 의존**한 것이었습니다(둘째 delay 루프가 fetch-line 경계에 걸쳐 >2초 → 타임아웃).
@@ -89,13 +105,17 @@ gtkterm -p /dev/ttyACM0 -s 115200
 기대 출력 (요약):
 
 ```
-[Spi] poll cyc = 0x0001A0..  / irq cyc = 0x00..  / dma cyc = 0x00..
+[Spi] poll cyc = 0x0001A...  / irq cyc = 0x00..  / dma cyc = 0x00..
+[Det] mod=0x7B api=0x04 err=0x0A/15/14   # 의도적 오호출 3건 신고 (DET 데모)
 [Adc] ReadGroup = OK   VREFSH R0 = 0x00000FF4
 [Pwm] duty 25% set, VAL3 = 0x00003FFF
 [Can] loopback = OK (TX -> RX data match)   write(HOH=0) = OK
 [Gpt] CNT advancing = YES
 [Icu] CNTR advancing = YES
-[PERI] beat 0x.. / [Gpt] tick = 0x..     # 주기 인터럽트 + 워치독 refresh 생존
+[Mcu] reset SRSR = 0x00000001            # 리셋 원인 (2차 부팅에선 0x80 = watchdog)
+[PERI] beat 0x.. / [Gpt] tick = 0x.. / [WdgM] status = 0x00
+  # 1차 부팅: beat 5 부터 체크포인트 침묵 → status 0→1(FAILED)→2(EXPIRED) → 리셋
+  # 2차 부팅: 워치독 리셋 감지 → 증언 지속 → 영구 생존
 ```
 
 ---
@@ -104,6 +124,8 @@ gtkterm -p /dev/ttyACM0 -s 115200
 
 - **[docs/GLOSSARY.md](docs/GLOSSARY.md)** — 프로젝트 전체 약어 (레지스터/비트/AUTOSAR)
 - **[docs/TROUBLESHOOTING_ICACHE_WATCHDOG.md](docs/TROUBLESHOOTING_ICACHE_WATCHDOG.md)** — 워치독/I-cache 근본원인 추적 포스트모템
+- AUTOSAR 확장 노트 (SWS 개념 · 설계 · 실측 결과):
+  [DET](docs/DET_NOTES.md) · [Post-build Config](docs/CONFIG_NOTES.md) · [WdgM](docs/WDGM_NOTES.md)
 - RM 정리 노트 (드라이버별 레지스터 맵 · 시퀀스 · 검증 기준):
   [LPSPI](docs/LPSPI_NOTES.md) · [ADC](docs/ADC_NOTES.md) · [PWM](docs/PWM_NOTES.md) ·
   [CAN](docs/CAN_NOTES.md) · [GPT](docs/GPT_NOTES.md) · [RTWDOG](docs/WDG_NOTES.md) · [QuadTimer](docs/ICU_NOTES.md)
@@ -122,7 +144,8 @@ RT1020_PERIPHERAL/
 │   ├── main.c                  # 7개 드라이버 데모 하네스 + 표준 API 호출
 │   ├── Spi.c  / lpspi.c        # SPI facade / register (4계층 모범)
 │   ├── Adc.c Pwm.c Can.c Gpt.c Wdg.c Icu.c   # register + facade (모듈당 1파일)
-│   ├── Mcu.c Port.c Dio.c      # CCM/IOMUXC/GPIO 파사드
+│   ├── Mcu.c Port.c Dio.c      # CCM/IOMUXC/GPIO 파사드 (+ Mcu_GetResetReason)
+│   ├── Det.c / Cfg.c / WdgM.c  # AUTOSAR 확장: 에러 신고 / 설정 테이블 / alive supervision
 │   └── boot_header.c           # IVT + boot_data (ROM 부팅 헤더)
 ├── shared/                     # 검증된 공통 plumbing (startup, clock, uart, led, regs, cache ...)
 └── docs/                       # RM 정리 노트 + 용어집 + 트러블슈팅
@@ -133,5 +156,5 @@ RT1020_PERIPHERAL/
 ## 안 쓴 이유 / 한계
 
 - **HAL/SDK 미사용**: 베어메탈 + 레지스터 원리 학습이 목적. 실무 양산은 검증된 HAL 권장.
-- **AUTOSAR 파사드는 레벨1**: 표준 API 의 "모양"과 계층 분리를 시연하는 수준(설정 테이블/전체 상태머신은 생략).
+- **AUTOSAR 는 축소 재현**: 표준 API 모양 + DET/설정 테이블/WdgM 까지 구현했지만, 도구 생성 설정(EB tresos)·전체 상태머신·Spi 의 Job/Sequence 계층·DEM 연동은 범위 밖.
 - **외부 device 검증은 loopback/내부채널로 대체**: EVK 헤더 unpopulated 라 SPI 실device·ADC 외부 pot·Icu 실캡처는 핀헤더/로직애널라이저 확보 시 확장 예정.

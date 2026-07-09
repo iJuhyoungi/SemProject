@@ -12,6 +12,7 @@
 #include "Icu.h"
 #include "Mcu.h"
 #include "Cfg.h"
+#include "WdgM.h"
 
 /* busy-wait */
 static void delay_busy(volatile uint32_t n)
@@ -192,12 +193,20 @@ int main(void)
     UART1_SendHex32(Wdg1_GetCNT());
     UART1_SendString("\r\n");
 
+    WdgM_Init(&WdgM_Config);
+
     uint32_t beat = 0;
     while (1)
     {
-        int feed = by_wdg || (beat < 5); /* 먹이 줄 조건 한 번에 */
+        int alive = by_wdg || (beat < 5); 
 
-        Wdg_SetTriggerCondition(feed ? 100u : 0u);
+        if(alive) WdgM_CheckpointReached(0, 0);
+
+        if (beat == 3) {
+            for (int i = 0;i < 20 ;++i) {
+                WdgM_CheckpointReached(0, 0);
+            }
+        }
 
         UART1_SendString("[Icu] edge count = ");
         UART1_SendHex32(Icu_GetEdgeNumbers(0));
@@ -206,7 +215,7 @@ int main(void)
         Dio_WriteChannel(0, STD_HIGH);
         delay_busy(20000000);
 
-        Wdg_SetTriggerCondition(feed ? 100u : 0u);
+        if(alive) WdgM_CheckpointReached(0, 0);
 
         Dio_WriteChannel(0, STD_LOW);
         delay_busy(20000000);
@@ -217,6 +226,13 @@ int main(void)
         UART1_SendString("[Gpt] tick = ");
         UART1_SendHex32(Gpt1_GetTick());
         UART1_SendString("\r\n");
+
+        WdgM_GlobalStatusType wdgm_st;
+        if(WdgM_GetGlobalStatus(&wdgm_st)==E_OK){
+            UART1_SendString("[WdgM] status = ");
+            UART1_SendHex32(wdgm_st);
+            UART1_SendString("\r\n");
+        }
     }
 
     return 0;

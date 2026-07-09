@@ -35,3 +35,10 @@ const Spi_ConfigType Spi_Config = {
 const Icu_ConfigType Icu_Config = {
     .gen_half_period=0x0FFFu
 };
+
+const WdgM_ConfigType WdgM_Config = {
+    .expected_min     = 1u,
+    .expected_max     = 6u,
+    .failed_tolerance = 1u,
+};
+

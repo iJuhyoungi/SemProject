@@ -1,6 +1,7 @@
 #include "Gpt.h"
 #include "rt1020_regs.h"
 #include "Det.h"
+#include "WdgM.h"
 
 #define GPT_EN (1u << 0)
 #define GPT_ENMOD (1u << 1)
@@ -39,6 +40,7 @@ void GPT1_IRQHandler(void)
     {
         GPT1_SR = GPT_OF1; // W1C 클리어
         g_gpt_tick++;
+        WdgM_MainFunction();
     }
 }
 

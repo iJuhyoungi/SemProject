@@ -202,12 +202,6 @@ int main(void)
 
         if(alive) WdgM_CheckpointReached(0, 0);
 
-        if (beat == 3) {
-            for (int i = 0;i < 20 ;++i) {
-                WdgM_CheckpointReached(0, 0);
-            }
-        }
-
         UART1_SendString("[Icu] edge count = ");
         UART1_SendHex32(Icu_GetEdgeNumbers(0));
         UART1_SendString("\r\n");

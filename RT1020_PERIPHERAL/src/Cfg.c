@@ -5,7 +5,9 @@ const Gpt_ConfigType Gpt_Config = {
     .period_ticks=1000000u,     /* GPT1_OCR1 */
 };
 
-/* RTWDOG: 0xFFFF = 최대 ≈2.048초 @32kHz LPO
+/* RTWDOG: TOVAL 0xFFFF ≈ 2.048초 @32kHz LPO (16-bit 한계, P-11 교훈).
+   WIN 0x2000 ≈ 0.25초 = HW window mode ON — 허용 refresh 창 [0.25s, 2.048s).
+   WdgM feed 케이던스(≈0.4초) > WIN 이라 정상 흐름은 항상 통과 */
 const Wdg_ConfigType Wdg_Config = {
     .timeout_ticks = 0xFFFFu,
     .window_ticks  = 0x2000u,

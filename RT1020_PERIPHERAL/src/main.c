@@ -202,11 +202,6 @@ int main(void)
 
         if(alive) WdgM_CheckpointReached(0, 0);
 
-        if (!by_wdg && beat == 2) {
-            Wdg_SetTriggerCondition(100u);
-            Wdg_SetTriggerCondition(100u);
-        }
-
         UART1_SendString("[Icu] edge count = ");
         UART1_SendHex32(Icu_GetEdgeNumbers(0));
         UART1_SendString("\r\n");

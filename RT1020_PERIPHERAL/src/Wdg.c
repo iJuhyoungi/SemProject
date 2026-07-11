@@ -2,6 +2,7 @@
 #include "rt1020_regs.h"
 #include "Det.h"
 
+#define WDG_CS_WIN      (1u << 15)
 #define WDG_CS_CMD32EN (1u << 13)
 #define WDG_CS_ULK (1u << 11)    // RO : unlock됨
 #define WDG_CS_RCS (1u << 10)    // RO : 재설정 성공
@@ -29,8 +30,13 @@ void Wdg1_Init(uint16_t timeout_ticks, uint16_t window_ticks)
 
     // 설정: 32kHz LPO + EN + UPDATE + 32bit cmd, window off
     RTWDG_TOVAL = timeout_ticks; // 32kHz 기준, 16-bit
-    RTWDG_WIN = window_ticks;    // CS[WIN] 안 켜면 값만 준비 (현재 비활성)
-    RTWDG_CS = WDG_CS_EN | WDG_CS_UPDATE | WDG_CS_CMD32EN | WDG_CS_CLK_LPO;
+    RTWDG_WIN = window_ticks;
+    // RTWDG_CS = WDG_CS_EN | WDG_CS_UPDATE | WDG_CS_CMD32EN | WDG_CS_CLK_LPO;
+    uint32_t cs = WDG_CS_EN | WDG_CS_UPDATE | WDG_CS_CMD32EN | WDG_CS_CLK_LPO;
+    if (window_ticks > 0u) {
+        cs |= WDG_CS_WIN;
+    }
+    RTWDG_CS = cs;
 
     // RCS=1 대기
     while (!(RTWDG_CS & WDG_CS_RCS))

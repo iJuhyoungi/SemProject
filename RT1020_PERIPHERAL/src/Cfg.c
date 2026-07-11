@@ -5,11 +5,10 @@ const Gpt_ConfigType Gpt_Config = {
     .period_ticks=1000000u,     /* GPT1_OCR1 */
 };
 
-/* RTWDOG: 0xFFFF = 최대 ≈2.048초 @32kHz LPO (16-bit 한계, P-11 교훈).
-   window 0 = 비활성 — WdgM 단계에서 활성 예정 */
+/* RTWDOG: 0xFFFF = 최대 ≈2.048초 @32kHz LPO
 const Wdg_ConfigType Wdg_Config = {
     .timeout_ticks = 0xFFFFu,
-    .window_ticks  = 0u,
+    .window_ticks  = 0x2000u,
 };
 
 const Pwm_ConfigType Pwm_Config = {

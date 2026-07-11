@@ -7,6 +7,7 @@ static const WdgM_ConfigType *WdgM_ConfigPtr = 0;
 static volatile uint16_t WdgM_AliveCounter = 0;
 static volatile uint8_t WdgM_FailCount = 0;
 static volatile WdgM_LocalStatusType WdgM_Status = 0;
+static volatile uint8_t WdgM_FirstCycle = 1;
 
 void WdgM_Init(const WdgM_ConfigType *ConfigPtr)
 {
@@ -21,6 +22,7 @@ void WdgM_Init(const WdgM_ConfigType *ConfigPtr)
     WdgM_AliveCounter = 0;
     WdgM_FailCount = 0;
     WdgM_Status = WDGM_LOCAL_STATUS_OK;
+    WdgM_FirstCycle = 1;
 }
 
 Std_ReturnType WdgM_CheckpointReached(WdgM_SupervisedEntityIdType SEID, WdgM_CheckpointIdType CheckpointID)
@@ -47,6 +49,12 @@ void WdgM_MainFunction(void)
 {
     if (WdgM_ConfigPtr == 0) {
         return;                     /* init 전: 스펙은 DET 신고지만 ISR 규칙상 침묵 (레벨1 타협) */
+    }
+
+    if (WdgM_FirstCycle) {
+        WdgM_FirstCycle = 0;
+        WdgM_AliveCounter = 0;
+        return;
     }
 
     uint16_t cnt = WdgM_AliveCounter;

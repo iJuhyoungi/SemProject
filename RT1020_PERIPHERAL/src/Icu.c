@@ -5,6 +5,7 @@
 #define CM_PRIMARY_RISING       (1u<<13)    /* CM=001: primary 상승엣지 카운트 */
 #define PCS_BUSCLK_DIV8         (0xBu<<9)   /* PCS=1011: IP bus clock ÷8 */
 #define PCS_CNT0_OUTPUT         (4u<<9)     /* PCS=0100: Counter 0 출력 */
+#define PCS_CNT2_INPUT          (2u<<9)     /* PCS=0010: Counter 2 입력 (XBAR 에서 옴) */
 #define LENGTH_REINIT           (1u<<5)     /* COMP1 도달 시 LOAD 로 재초기화 */
 #define OUTMODE_TOGGLE          (3u<<0)     /* OUTMODE=011: compare 시 OFLAG 토글 */
 
@@ -26,11 +27,23 @@ void Icu1_Init(uint16_t gen_half_period)
     TMR1_LOAD(1)=0u;
     TMR1_SCTRL(1)=0u;
     TMR1_CTRL(1)=CM_PRIMARY_RISING|PCS_CNT0_OUTPUT;
+
+    //ch2=>PWM 트리거 펄스 카운트 (XBAR 가 TIMER2 입력으로 넣어줌 — Port_RoutePwmTrigToQtmr)
+    TMR1_CTRL(2)=0u;
+    TMR1_CNTR(2)=0u;
+    TMR1_LOAD(2)=0u;
+    TMR1_SCTRL(2)=0u;
+    TMR1_CTRL(2)=CM_PRIMARY_RISING|PCS_CNT2_INPUT;
 }
 
 uint16_t Icu1_GetEdgeCount(void)
 {
     return TMR1_CNTR(1);
+}
+
+uint16_t Icu1_GetPwmEdgeCount(void)
+{
+    return TMR1_CNTR(2);                    // ch2 = PWM 주기당 1펄스 누적
 }
 
 #include "Det.h"
@@ -64,14 +77,14 @@ Icu_EdgeNumberType Icu_GetEdgeNumbers(Icu_ChannelType Channel)
         Det_ReportError(ICU_MODULE_ID, 0u, ICU_SID_GETEDGENUMBERS, ICU_E_UNINIT);
         return 0u;
     }
-    if (Channel != 0u) {
+    if (Channel > 1u) {                     /* 채널 0=cascade, 1=PWM 루프백 */
         Det_ReportError(ICU_MODULE_ID, 0u, ICU_SID_GETEDGENUMBERS, ICU_E_PARAM_CHANNEL);
         return 0u;
     }
 #else
     (void)Channel;
 #endif
-    return Icu1_GetEdgeCount();         //CNTR1=ch0 누적 엣지 수
+    return (Channel == 1u) ? Icu1_GetPwmEdgeCount() : Icu1_GetEdgeCount();
 }
 
 void Icu_ResetEdgeCount(Icu_ChannelType Channel)
@@ -81,12 +94,19 @@ void Icu_ResetEdgeCount(Icu_ChannelType Channel)
         Det_ReportError(ICU_MODULE_ID, 0u, ICU_SID_RESETEDGECOUNT, ICU_E_UNINIT);
         return;
     }
-    if (Channel != 0u) {
+    if (Channel > 1u) {
         Det_ReportError(ICU_MODULE_ID, 0u, ICU_SID_RESETEDGECOUNT, ICU_E_PARAM_CHANNEL);
         return;
     }
 #else
     (void)Channel;
 #endif
-    TMR1_CNTR(1)=0u;                    // ch1 카운터 클리어
+    if (Channel == 1u)
+    {
+        TMR1_CNTR(2) = 0u;
+    }
+    else
+    {
+        TMR1_CNTR(1) = 0u;
+    }
 }

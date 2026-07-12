@@ -13,6 +13,7 @@
 #include "Mcu.h"
 #include "Cfg.h"
 #include "WdgM.h"
+#include "Port.h"
 
 /* busy-wait */
 static void delay_busy(volatile uint32_t n)
@@ -175,6 +176,7 @@ int main(void)
     Mcu_ClearResetReason();
 
     Icu_Init(&Icu_Config);
+    Port_RoutePwmTrigToQtmr();
     uint16_t e1=Icu_GetEdgeNumbers(0);
     delay_busy(100000);
     uint16_t e2=Icu_GetEdgeNumbers(0);
@@ -204,6 +206,9 @@ int main(void)
 
         UART1_SendString("[Icu] edge count = ");
         UART1_SendHex32(Icu_GetEdgeNumbers(0));
+        UART1_SendString("\r\n");
+        UART1_SendString("[Icu] pwm edges  = ");
+        UART1_SendHex32(Icu_GetEdgeNumbers(1));
         UART1_SendString("\r\n");
 
         Dio_WriteChannel(0, STD_HIGH);

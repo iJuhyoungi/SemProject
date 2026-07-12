@@ -17,6 +17,9 @@ void Pwm1_Init(uint16_t period, uint16_t initial_val3)
     FLEXPWM1_SM0VAL2=0u;                // PWM_A rising edge
     FLEXPWM1_SM0VAL3=initial_val3;      // PWM_A falling edge -> 50% duty
 
+    // VAL1(주기 끝) 비교 이벤트마다 트리거 펄스 1개 -> XBAR 로 나감 (Icu 루프백용)
+    FLEXPWM1_SM0TCTRL=(1u<<1);          /* OUT_TRIG_EN bit1 = VAL1 */
+
     // 출력 enable. pin의 경우 EMC라서 관측에는 scope가 필요
     FLEXPWM1_OUTEN|=(1u<<8);
 

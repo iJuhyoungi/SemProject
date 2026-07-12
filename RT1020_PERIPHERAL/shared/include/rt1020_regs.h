@@ -11,6 +11,7 @@
 #define CCM_CCGR1                               (*(volatile uint32_t *)0x400FC06C)  // LPSPI1~4, SEMC_EXSC, GPT1, LPUART4, GPIO1, CSU, GPIO5
 /* [CCM] 클럭 제어 모듈 추가 */
 #define CCM_CCGR0                               (*(volatile uint32_t *)0x400FC068)  // CCGR0: CG7 ipg=bits15:14, CG8 PE=bits17:16 / CSCMR2 CAN_CLK_SEL=bits9:8
+#define CCM_CCGR2                               (*(volatile uint32_t *)0x400FC070)  // CG11=xbar1
 #define CCM_CCGR3                               (*(volatile uint32_t *)0x400FC074)  // SEMC 모듈 전원/클럭 활성화, LPUART5~6, AOI1, ENC1~2, PWM1~2 
 #define CCM_CCGR4                               (*(volatile uint32_t *)0x400FC078)
 #define CCM_CCGR5                               (*(volatile uint32_t *)0x400FC07C)  // DMA + DMAMUX(CG3), FLEXSPI, TRNG, USDHC2, LPUART8, DCDC
@@ -180,6 +181,7 @@
 #define FLEXPWM1_SM0VAL1    (*(volatile uint16_t *)(FLEXPWM1_BASE+0x0E))
 #define FLEXPWM1_SM0VAL2    (*(volatile uint16_t *)(FLEXPWM1_BASE+0x12))
 #define FLEXPWM1_SM0VAL3    (*(volatile uint16_t *)(FLEXPWM1_BASE+0x16))
+#define FLEXPWM1_SM0TCTRL   (*(volatile uint16_t *)(FLEXPWM1_BASE+0x2A))   // OUT_TRIG_EN
 #define FLEXPWM1_OUTEN      (*(volatile uint16_t *)(FLEXPWM1_BASE+0x180))
 #define FLEXPWM1_MCTRL      (*(volatile uint16_t *)(FLEXPWM1_BASE+0x188))
 
@@ -220,5 +222,11 @@
 #define TMR1_CNTR(n)        (*(volatile uint16_t *)(TMR1_BASE + (n)*0x20u + 0x0Au))  // 현재 카운터
 #define TMR1_CTRL(n)        (*(volatile uint16_t *)(TMR1_BASE + (n)*0x20u + 0x0Cu))  // CM/PCS/SCS/OUTMODE
 #define TMR1_SCTRL(n)       (*(volatile uint16_t *)(TMR1_BASE + (n)*0x20u + 0x0Eu))  // 상태/캡처
+
+/* ===== XBARA1 (crossbar switch, Ch.56) ===== */
+#define XBARA1_SEL44        (*(volatile uint16_t *)0x403BC058)  // [6:0]=OUT88(QTIMER1_TIMER2) 소스
+
+/* ===== IOMUXC_GPR (Ch.11) ===== */
+#define IOMUXC_GPR_GPR6     (*(volatile uint32_t *)0x400AC018)  // bit2=QTIMER1_TRM2_INPUT_SEL
 
 #endif // RT1020_REGS_H

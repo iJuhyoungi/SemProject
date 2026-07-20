@@ -67,6 +67,52 @@ static void report_jedec_id(void)
     UART1_SendString("\r\n");
 }
 
+static void report_status(void)
+{
+    uint8_t sr;
+
+    if (FlexSPI_ReadStatus(&sr) != FLS_IP_OK)
+    {
+        UART1_SendString("[FLS] Status read FAILED\r\n");
+        return;
+    }
+
+    UART1_SendString("[FLS] Status-1 = 0x");
+    uart_hex8(sr);
+    UART1_SendString("  WIP=");
+    UART1_SendChar((sr & FLS_STATUS_WIP) ? '1' : '0');
+    UART1_SendString(" WEL=");
+    UART1_SendChar((sr & FLS_STATUS_WEL) ? '1' : '0');
+    UART1_SendString("\r\n");
+}
+
+static void verify_read(void)
+{
+    uint8_t      d[4];
+    Fls_IpStatus st;
+    uint32_t     ip_val;
+    uint32_t     ahb_val;
+
+    st = FlexSPI_ReadData(0x000000u, d, 4u);
+    if (st != FLS_IP_OK)
+    {
+        UART1_SendString("[FLS] IP read FAILED, status=");
+        UART1_SendHex32((uint32_t)st);
+        UART1_SendString("\r\n");
+        return;
+    }
+
+    ip_val  = (uint32_t)d[0] | ((uint32_t)d[1] << 8)
+            | ((uint32_t)d[2] << 16) | ((uint32_t)d[3] << 24);
+    ahb_val = *(volatile uint32_t *)0x60000000u;
+
+    UART1_SendString("[FLS] IP read  @0x000000 = ");
+    UART1_SendHex32(ip_val);
+    UART1_SendString("\r\n[FLS] AHB read @0x60000000 = ");
+    UART1_SendHex32(ahb_val);
+    UART1_SendString(ip_val == ahb_val ? "\r\n[FLS] READ MATCH\r\n"
+                                        : "\r\n[FLS] READ MISMATCH\r\n");
+}
 
 int main(void)
 {
@@ -77,6 +123,8 @@ int main(void)
     LED_Init();
 
     report_jedec_id();
+    report_status();
+    verify_read();
 
     uint32_t beat = 0;
     while (1)

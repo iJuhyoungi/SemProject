@@ -4,6 +4,10 @@
 /* IP 명령은 µs 단위 */
 #define FLS_IP_TIMEOUT   1000000u
 
+#ifndef STOP
+#define STOP   0x00   /* 시퀀스 끝 — flexspi_nor_config.h 엔 없어 여기서만 정의 */
+#endif
+
 static Fls_IpStatus wait_ip_cmd_done(void)
 {
     uint32_t guard = FLS_IP_TIMEOUT;
@@ -28,6 +32,20 @@ static Fls_IpStatus wait_ip_cmd_done(void)
     return FLS_IP_E_TIMEOUT;
 }
 
+static Fls_IpStatus wait_rx_fill(void)
+{
+    uint32_t guard=FLS_IP_TIMEOUT;
+
+    while((FLEXSPI_IPRXFSTS&FLEXSPI_IPRXFSTS_FILL_MASK)==0)
+    {
+        if(--guard==0u)
+        {
+            return FLS_IP_E_TIMEOUT;
+        }
+    }
+    return FLS_IP_OK;
+}
+
 /* 부팅 LUT 의 빈 슬롯에 우리 코드를 추가한다. 기존 슬롯은 읽지도 쓰지도 않는다. */
 void FlexSPI_InstallLut(void)
 {
@@ -42,9 +60,24 @@ void FlexSPI_InstallLut(void)
 
     FLEXSPI_LUT[4u * FLS_LUT_SEQ_READ_JEDEC_ID + 0u] =
         FLEXSPI_LUT_SEQ(CMD_SDR, PAD_1, 0x9F, CMD_READ_SDR, PAD_1, 0x04);
-    FLEXSPI_LUT[4u * FLS_LUT_SEQ_READ_JEDEC_ID + 1u] = 0u;   /* STOP */
+    FLEXSPI_LUT[4u * FLS_LUT_SEQ_READ_JEDEC_ID + 1u] = 0u;
     FLEXSPI_LUT[4u * FLS_LUT_SEQ_READ_JEDEC_ID + 2u] = 0u;
     FLEXSPI_LUT[4u * FLS_LUT_SEQ_READ_JEDEC_ID + 3u] = 0u;
+
+    FLEXSPI_LUT[4u * FLS_LUT_SEQ_READ_STATUS + 0u] =
+        FLEXSPI_LUT_SEQ(CMD_SDR, PAD_1, 0x05, CMD_READ_SDR, PAD_1, 0x01);
+    FLEXSPI_LUT[4u * FLS_LUT_SEQ_READ_STATUS + 1u] = 0u;
+    FLEXSPI_LUT[4u * FLS_LUT_SEQ_READ_STATUS + 2u] = 0u;
+    FLEXSPI_LUT[4u * FLS_LUT_SEQ_READ_STATUS + 3u] = 0u;
+
+    
+
+    FLEXSPI_LUT[4u * FLS_LUT_SEQ_READ_DATA + 0u] =
+        FLEXSPI_LUT_SEQ(CMD_SDR, PAD_1, 0x0B, CMD_RADDR_SDR, PAD_1, 0x18);
+    FLEXSPI_LUT[4u * FLS_LUT_SEQ_READ_DATA + 1u] =
+        FLEXSPI_LUT_SEQ(CMD_DUMMY_SDR, PAD_1, 0x08, CMD_READ_SDR, PAD_1, 0x04);
+    FLEXSPI_LUT[4u * FLS_LUT_SEQ_READ_DATA + 2u] = 0u;
+    FLEXSPI_LUT[4u * FLS_LUT_SEQ_READ_DATA + 3u] = 0u;
 
     FLEXSPI_LUTKEY = FLEXSPI_LUTKEY_VALUE;
     FLEXSPI_LUTCR  = FLEXSPI_LUTCR_LOCK;
@@ -75,11 +108,94 @@ Fls_IpStatus FlexSPI_ReadJedecId(uint8_t id[3])
         return st;
     }
 
+    st = wait_rx_fill();
+    if (st != FLS_IP_OK)
+    {
+        FLEXSPI_IPRXFCR|=FLEXSPI_IPRXFCR_CLRIPRXF;
+        return st;
+    }
+
     word  = FLEXSPI_RFDR[0];
     id[0] = (uint8_t)(word & 0xFFu);           /* manufacturer */
     id[1] = (uint8_t)((word >> 8) & 0xFFu);    /* memory type */
     id[2] = (uint8_t)((word >> 16) & 0xFFu);   /* capacity (2^n 바이트) */
 
+    FLEXSPI_IPRXFCR |= FLEXSPI_IPRXFCR_CLRIPRXF;
+    return FLS_IP_OK;
+}
+
+Fls_IpStatus FlexSPI_ReadStatus(uint8_t *status)
+{
+    Fls_IpStatus st;
+
+    FLEXSPI_IPRXFCR |= FLEXSPI_IPRXFCR_CLRIPRXF;
+    FLEXSPI_INTR = FLEXSPI_INTR_IPCMDDONE | FLEXSPI_INTR_IPCMDERR | FLEXSPI_INTR_IPCMDGE;
+
+    FLEXSPI_IPCR0 = 0u; /* status 읽기는 주소가 없다 */
+    FLEXSPI_IPCR1 = FLEXSPI_IPCR1_ISEQID(FLS_LUT_SEQ_READ_STATUS) | FLEXSPI_IPCR1_ISEQNUM(0u) | FLEXSPI_IPCR1_IDATSZ(1u);
+    FLEXSPI_IPCMD = FLEXSPI_IPCMD_TRG;
+
+    st = wait_ip_cmd_done();
+    if (st != FLS_IP_OK)
+    {
+        FLEXSPI_IPRXFCR |= FLEXSPI_IPRXFCR_CLRIPRXF;
+        return st;
+    }
+
+    st=wait_rx_fill();
+    if(st!=FLS_IP_OK)
+    {
+        FLEXSPI_IPRXFCR|=FLEXSPI_IPRXFCR_CLRIPRXF;
+        return st;
+    }
+
+    *status = (uint8_t)(FLEXSPI_RFDR[0] & 0xFFu);
+    FLEXSPI_IPRXFCR |= FLEXSPI_IPRXFCR_CLRIPRXF;
+    return FLS_IP_OK;
+}
+
+Fls_IpStatus FlexSPI_ReadData(uint32_t addr, uint8_t *buf, uint32_t len)
+{
+    Fls_IpStatus st;
+    uint32_t words;
+    uint32_t i;
+
+    if (len == 0u || len > FLS_IP_READ_MAX)
+    {
+        return FLS_IP_E_PARAM;
+    }
+
+    FLEXSPI_IPRXFCR |= FLEXSPI_IPRXFCR_CLRIPRXF;
+    FLEXSPI_INTR = FLEXSPI_INTR_IPCMDDONE | FLEXSPI_INTR_IPCMDERR | FLEXSPI_INTR_IPCMDGE;
+
+    FLEXSPI_IPCR0 = addr;
+    FLEXSPI_IPCR1 = FLEXSPI_IPCR1_ISEQID(FLS_LUT_SEQ_READ_DATA) | FLEXSPI_IPCR1_ISEQNUM(0u) | FLEXSPI_IPCR1_IDATSZ(len);
+    FLEXSPI_IPCMD = FLEXSPI_IPCMD_TRG;
+
+    st = wait_ip_cmd_done();
+    if (st != FLS_IP_OK)
+    {
+        FLEXSPI_IPRXFCR |= FLEXSPI_IPRXFCR_CLRIPRXF;
+        return st;
+    }
+
+    st=wait_rx_fill();
+    if(st!=FLS_IP_OK)
+    {
+        FLEXSPI_IPRXFCR|=FLEXSPI_IPRXFCR_CLRIPRXF;
+        return st;
+    }
+
+    words = (len + 3u) / 4u;
+    for (i = 0u; i < words; ++i)
+    {
+        uint32_t w = FLEXSPI_RFDR[i];
+        uint32_t b;
+        for (b = 0u; b < 4u && (i * 4u + b) < len; ++b)
+        {
+            buf[i * 4u + b] = (uint8_t)((w >> (8u * b)) & 0xFFu);
+        }
+    }
     FLEXSPI_IPRXFCR |= FLEXSPI_IPRXFCR_CLRIPRXF;
     return FLS_IP_OK;
 }

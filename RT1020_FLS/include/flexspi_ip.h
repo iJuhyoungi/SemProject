@@ -13,6 +13,7 @@
 #define FLEXSPI_IPCMD           (*(volatile uint32_t *)(FLEXSPI_BASE + 0x0B0u))
 #define FLEXSPI_IPRXFCR         (*(volatile uint32_t *)(FLEXSPI_BASE + 0x0B8u))
 #define FLEXSPI_STS0            (*(volatile uint32_t *)(FLEXSPI_BASE + 0x0E0u))
+#define FLEXSPI_IPRXFSTS        (*(volatile uint32_t *)(FLEXSPI_BASE + 0x0F0u))
 #define FLEXSPI_RFDR            ((volatile uint32_t *)(FLEXSPI_BASE + 0x100u))
 #define FLEXSPI_LUT             ((volatile uint32_t *)(FLEXSPI_BASE + 0x200u))
 
@@ -25,6 +26,7 @@
 #define FLEXSPI_STS0_SEQIDLE    (1u << 0)
 #define FLEXSPI_STS0_ARBIDLE    (1u << 1)
 #define FLEXSPI_STS0_IDLE_MASK  (FLEXSPI_STS0_SEQIDLE | FLEXSPI_STS0_ARBIDLE)
+#define FLEXSPI_IPRXFSTS_FILL_MASK      0xFFu
 
 /* IPCR1 필드 */
 #define FLEXSPI_IPCR1_IDATSZ(n)   ((uint32_t)(n) & 0xFFFFu)          /* 주고받을 바이트 수 */
@@ -39,17 +41,28 @@
 
 /* ---- LUT 슬롯 배정 ---- */
 /* 0/1/3/4/5/8/9/11 은 부팅 FCB 가 이미 점유하고 있다 (shared/src/flexspi_nor_config.c). */
+#define FLS_LUT_SEQ_READ_STATUS     2u
+#define FLS_LUT_SEQ_READ_DATA       6u
 #define FLS_LUT_SEQ_READ_JEDEC_ID   7u
+
+/* Status-1 레지스터 비트 (0x05 로 읽는다) */
+#define FLS_STATUS_WIP   (1u << 0)   /* Write In Progress — 내부 작업 중이면 1 */
+#define FLS_STATUS_WEL   (1u << 1)   /* Write Enable Latch — WREN 후 1, 쓰기 한 번이면 자동 해제 */
 
 typedef enum
 {
     FLS_IP_OK = 0,
     FLS_IP_E_TIMEOUT,
-    FLS_IP_E_CMDERR
+    FLS_IP_E_CMDERR,
+    FLS_IP_E_PARAM
 } Fls_IpStatus;
+
+#define FLS_IP_READ_MAX             32u
 
 void         FlexSPI_InstallLut(void);
 Fls_IpStatus FlexSPI_ReadJedecId(uint8_t id[3]);
+Fls_IpStatus FlexSPI_ReadStatus(uint8_t *status);
+Fls_IpStatus FlexSPI_ReadData(uint32_t addr, uint8_t *buf, uint32_t len);
 
 #endif /* FLEXSPI_IP_H */
 

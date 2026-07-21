@@ -44,6 +44,8 @@
 #define FLS_LUT_SEQ_READ_STATUS     2u
 #define FLS_LUT_SEQ_READ_DATA       6u
 #define FLS_LUT_SEQ_READ_JEDEC_ID   7u
+#define FLS_LUT_SEQ_WRITE_ENABLE    10u
+#define FLS_LUT_SEQ_WRITE_DISABLE   12u
 
 /* Status-1 레지스터 비트 (0x05 로 읽는다) */
 #define FLS_STATUS_WIP   (1u << 0)   /* Write In Progress — 내부 작업 중이면 1 */
@@ -63,6 +65,8 @@ void         FlexSPI_InstallLut(void);
 Fls_IpStatus FlexSPI_ReadJedecId(uint8_t id[3]);
 Fls_IpStatus FlexSPI_ReadStatus(uint8_t *status);
 Fls_IpStatus FlexSPI_ReadData(uint32_t addr, uint8_t *buf, uint32_t len);
+Fls_IpStatus FlexSPI_WriteEnable(void);
+Fls_IpStatus FlexSPI_WriteDisable(void);
 
 #endif /* FLEXSPI_IP_H */
 

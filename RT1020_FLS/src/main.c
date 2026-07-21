@@ -86,6 +86,43 @@ static void report_status(void)
     UART1_SendString("\r\n");
 }
 
+static void print_sr(const char *label)
+{
+    uint8_t sr;
+    
+    if (FlexSPI_ReadStatus(&sr) != FLS_IP_OK)
+    {
+        UART1_SendString(label);
+        UART1_SendString(" status read FAILED\r\n");
+        return;
+    }   
+
+    UART1_SendString(label);
+    UART1_SendString(" SR=0x");
+    uart_hex8(sr);
+    UART1_SendString(" WIP=");
+    UART1_SendChar((sr & FLS_STATUS_WIP) ? '1' : '0');
+    UART1_SendString(" WEL=");
+    UART1_SendChar((sr & FLS_STATUS_WEL) ? '1' : '0');
+    UART1_SendString("\r\n");
+}
+
+static void report_wel_latch(void)
+{
+    UART1_SendString("[FLS] --- WEL latch test (flash 내용 변경 없음) ---\r\n");
+
+    print_sr("[FLS]   boot   :");
+
+    FlexSPI_WriteDisable();
+    print_sr("[FLS]   WRDI   :");   /* 기대: WEL=0 */
+    
+    FlexSPI_WriteEnable();
+    print_sr("[FLS]   WREN   :");   /* 기대: WEL=1 */
+    
+    FlexSPI_WriteDisable();
+    print_sr("[FLS]   relock :");   /* 기대: WEL=0 — 실험 끝나면 다시 잠근다 */
+}
+
 static void verify_read(void)
 {
     uint8_t      d[4];
@@ -125,6 +162,8 @@ int main(void)
     report_jedec_id();
     report_status();
     verify_read();
+
+    report_wel_latch();
 
     uint32_t beat = 0;
     while (1)

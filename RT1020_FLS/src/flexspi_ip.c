@@ -79,6 +79,21 @@ void FlexSPI_InstallLut(void)
     FLEXSPI_LUT[4u * FLS_LUT_SEQ_READ_DATA + 2u] = 0u;
     FLEXSPI_LUT[4u * FLS_LUT_SEQ_READ_DATA + 3u] = 0u;
 
+    /* WRITE ENABLE */
+    FLEXSPI_LUT[4u * FLS_LUT_SEQ_WRITE_ENABLE + 0u] =
+        FLEXSPI_LUT_SEQ(CMD_SDR, PAD_1, 0x06, STOP, PAD_1, 0x00);
+    FLEXSPI_LUT[4u * FLS_LUT_SEQ_WRITE_ENABLE + 1u] = 0u;
+    FLEXSPI_LUT[4u * FLS_LUT_SEQ_WRITE_ENABLE + 2u] = 0u;
+    FLEXSPI_LUT[4u * FLS_LUT_SEQ_WRITE_ENABLE + 3u] = 0u;
+
+    /* WRITE DISABLE */
+    FLEXSPI_LUT[4u * FLS_LUT_SEQ_WRITE_DISABLE + 0u] =
+        FLEXSPI_LUT_SEQ(CMD_SDR, PAD_1, 0x04, STOP, PAD_1, 0x00);
+    FLEXSPI_LUT[4u * FLS_LUT_SEQ_WRITE_DISABLE + 1u] = 0u;
+    FLEXSPI_LUT[4u * FLS_LUT_SEQ_WRITE_DISABLE + 2u] = 0u;
+    FLEXSPI_LUT[4u * FLS_LUT_SEQ_WRITE_DISABLE + 3u] = 0u;
+
+
     FLEXSPI_LUTKEY = FLEXSPI_LUTKEY_VALUE;
     FLEXSPI_LUTCR  = FLEXSPI_LUTCR_LOCK;
 }
@@ -198,4 +213,28 @@ Fls_IpStatus FlexSPI_ReadData(uint32_t addr, uint8_t *buf, uint32_t len)
     }
     FLEXSPI_IPRXFCR |= FLEXSPI_IPRXFCR_CLRIPRXF;
     return FLS_IP_OK;
+}
+
+static Fls_IpStatus run_cmd_no_data(uint32_t seq_id)
+{
+    FLEXSPI_IPRXFCR |= FLEXSPI_IPRXFCR_CLRIPRXF;
+    FLEXSPI_INTR     = FLEXSPI_INTR_IPCMDDONE | FLEXSPI_INTR_IPCMDERR | FLEXSPI_INTR_IPCMDGE;
+
+    FLEXSPI_IPCR0 = 0u;
+    FLEXSPI_IPCR1 = FLEXSPI_IPCR1_ISEQID(seq_id)
+                | FLEXSPI_IPCR1_ISEQNUM(0u)
+                | FLEXSPI_IPCR1_IDATSZ(0u);
+    FLEXSPI_IPCMD = FLEXSPI_IPCMD_TRG;
+
+    return wait_ip_cmd_done();
+}
+
+Fls_IpStatus FlexSPI_WriteEnable(void)
+{
+    return run_cmd_no_data(FLS_LUT_SEQ_WRITE_ENABLE);
+}
+
+Fls_IpStatus FlexSPI_WriteDisable(void)
+{
+    return run_cmd_no_data(FLS_LUT_SEQ_WRITE_DISABLE);
 }

@@ -46,17 +46,31 @@
 #define FLS_LUT_SEQ_READ_JEDEC_ID   7u
 #define FLS_LUT_SEQ_WRITE_ENABLE    10u
 #define FLS_LUT_SEQ_WRITE_DISABLE   12u
+#define FLS_LUT_SEQ_SECTOR_ERASE    13u
+
+#define FLS_SECTOR_SIZE            4096u
+#define FLS_PAGE_SIZE              256u
+#define FLS_WRITE_AREA_BASE        0x00700000u
+#define FLS_WRITE_AREA_LIMIT       0x00800000u   /* 배타 */
+#define FLS_TEST_SECTOR            0x007FF000u   /* flash 맨 끝 섹터 */
+
+#define FLS_RAMFUNC  __attribute__((section(".ramfunc"), noinline))
 
 /* Status-1 레지스터 비트 (0x05 로 읽는다) */
 #define FLS_STATUS_WIP   (1u << 0)   /* Write In Progress — 내부 작업 중이면 1 */
 #define FLS_STATUS_WEL   (1u << 1)   /* Write Enable Latch — WREN 후 1, 쓰기 한 번이면 자동 해제 */
 
+typedef struct {
+    uint8_t sr_after_cmd;
+    uint32_t poll_count;
+} Fls_EraseTrace;
 typedef enum
 {
     FLS_IP_OK = 0,
     FLS_IP_E_TIMEOUT,
     FLS_IP_E_CMDERR,
-    FLS_IP_E_PARAM
+    FLS_IP_E_PARAM,
+    FLS_IP_E_FORBIDDEN
 } Fls_IpStatus;
 
 #define FLS_IP_READ_MAX             32u
@@ -67,6 +81,7 @@ Fls_IpStatus FlexSPI_ReadStatus(uint8_t *status);
 Fls_IpStatus FlexSPI_ReadData(uint32_t addr, uint8_t *buf, uint32_t len);
 Fls_IpStatus FlexSPI_WriteEnable(void);
 Fls_IpStatus FlexSPI_WriteDisable(void);
+Fls_IpStatus Fls_EraseSector(uint32_t addr, Fls_EraseTrace *trace);
 
 #endif /* FLEXSPI_IP_H */
 

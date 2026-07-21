@@ -8,7 +8,7 @@
 #define STOP   0x00   /* 시퀀스 끝 — flexspi_nor_config.h 엔 없어 여기서만 정의 */
 #endif
 
-static Fls_IpStatus wait_ip_cmd_done(void)
+FLS_RAMFUNC static Fls_IpStatus wait_ip_cmd_done(void)
 {
     uint32_t guard = FLS_IP_TIMEOUT;
 
@@ -32,7 +32,7 @@ static Fls_IpStatus wait_ip_cmd_done(void)
     return FLS_IP_E_TIMEOUT;
 }
 
-static Fls_IpStatus wait_rx_fill(void)
+FLS_RAMFUNC static Fls_IpStatus wait_rx_fill(void)
 {
     uint32_t guard=FLS_IP_TIMEOUT;
 
@@ -93,9 +93,100 @@ void FlexSPI_InstallLut(void)
     FLEXSPI_LUT[4u * FLS_LUT_SEQ_WRITE_DISABLE + 2u] = 0u;
     FLEXSPI_LUT[4u * FLS_LUT_SEQ_WRITE_DISABLE + 3u] = 0u;
 
+    FLEXSPI_LUT[4u * FLS_LUT_SEQ_SECTOR_ERASE + 0u] =
+        FLEXSPI_LUT_SEQ(CMD_SDR, PAD_1, 0x20, CMD_RADDR_SDR, PAD_1, 0x18);
+    FLEXSPI_LUT[4u * FLS_LUT_SEQ_SECTOR_ERASE + 1u] = 0u;
+    FLEXSPI_LUT[4u * FLS_LUT_SEQ_SECTOR_ERASE + 2u] = 0u;
+    FLEXSPI_LUT[4u * FLS_LUT_SEQ_SECTOR_ERASE + 3u] = 0u;
 
     FLEXSPI_LUTKEY = FLEXSPI_LUTKEY_VALUE;
     FLEXSPI_LUTCR  = FLEXSPI_LUTCR_LOCK;
+}
+
+/* ===== 위험 구간 — 여기부터는 ITCM 에서 실행된다 =====
+* flash 를 읽는 행위(문자열 출력, const 접근, flash 함수 호출)를 절대 하지 말 것.
+* 오직 FlexSPI 레지스터와 스택(DTCM)만 만진다. */
+FLS_RAMFUNC static Fls_IpStatus erase_core(uint32_t addr, Fls_EraseTrace *trace)
+{
+    Fls_IpStatus st;
+    uint8_t      sr;
+    uint32_t     n = 0u;
+
+    /* 쓰기 가능 여부 확인 (WEL: 0 -> 1) */
+    st = FlexSPI_WriteEnable();
+    if (st != FLS_IP_OK)
+    {
+        return st;
+    }
+
+    /* sector erase. 이 순간부터 flash 는 읽기 없음. */
+    FLEXSPI_IPRXFCR |= FLEXSPI_IPRXFCR_CLRIPRXF;
+    FLEXSPI_INTR     = FLEXSPI_INTR_IPCMDDONE | FLEXSPI_INTR_IPCMDERR | FLEXSPI_INTR_IPCMDGE;
+    FLEXSPI_IPCR0    = addr;
+    FLEXSPI_IPCR1    = FLEXSPI_IPCR1_ISEQID(FLS_LUT_SEQ_SECTOR_ERASE)
+                    | FLEXSPI_IPCR1_ISEQNUM(0u)
+                    | FLEXSPI_IPCR1_IDATSZ(0u);
+    FLEXSPI_IPCMD    = FLEXSPI_IPCMD_TRG;
+
+    st = wait_ip_cmd_done();
+    if (st != FLS_IP_OK)
+    {
+        return st;
+    }
+
+    st = FlexSPI_ReadStatus(&sr);
+    if (st != FLS_IP_OK)
+    {
+        return st;
+    }
+    trace->sr_after_cmd = sr;
+
+    /* WIP 폴링. 수십 ms 동안 flash 는 잠들어 있고, 이 루프만이 RAM 에서 돈다. */
+    while ((sr & FLS_STATUS_WIP) != 0u)
+    {
+        st = FlexSPI_ReadStatus(&sr);
+        if (st != FLS_IP_OK)
+        {
+            return st;
+        }
+        n++;
+    }
+    trace->poll_count = n;
+
+    return FLS_IP_OK;
+}
+/* ===== 위험 구간 끝 ===== */
+
+/* 가드를 통과시킨 뒤 위험 구간으로 넘긴다. 이 함수 자체는 flash 에 있어도 된다 —
+* 판정에 쓰는 상수를 전부 읽고 난 뒤에야 erase 가 시작되기 때문이다. */
+Fls_IpStatus Fls_EraseSector(uint32_t addr, Fls_EraseTrace *trace)
+{
+    Fls_IpStatus st;
+
+    if (trace == 0)
+    {
+        return FLS_IP_E_PARAM;
+    }
+
+    /* 허용 영역 안이고 섹터 경계에 정렬돼 있어야 한다.
+    * 이미지 영역으로 향하는 erase 는 여기서 끝난다. */
+    if ((addr < FLS_WRITE_AREA_BASE) ||
+        (addr >= FLS_WRITE_AREA_LIMIT) ||
+        ((addr % FLS_SECTOR_SIZE) != 0u))
+    {
+        return FLS_IP_E_FORBIDDEN;
+    }
+
+    trace->sr_after_cmd = 0u;
+    trace->poll_count   = 0u;
+
+    /* 인터럽트를 막는다. ISR 은 flash 에 있어서, erase 중에 뛰면 그대로 죽는다.
+    * (지금 이 프로젝트는 인터럽트를 안 쓰지만 규칙은 규칙이다.) */
+    __asm volatile ("cpsid i" ::: "memory");
+    st = erase_core(addr, trace);
+    __asm volatile ("cpsie i" ::: "memory");
+
+    return st;
 }
 
 Fls_IpStatus FlexSPI_ReadJedecId(uint8_t id[3])
@@ -139,7 +230,7 @@ Fls_IpStatus FlexSPI_ReadJedecId(uint8_t id[3])
     return FLS_IP_OK;
 }
 
-Fls_IpStatus FlexSPI_ReadStatus(uint8_t *status)
+FLS_RAMFUNC Fls_IpStatus FlexSPI_ReadStatus(uint8_t *status)
 {
     Fls_IpStatus st;
 
@@ -215,7 +306,7 @@ Fls_IpStatus FlexSPI_ReadData(uint32_t addr, uint8_t *buf, uint32_t len)
     return FLS_IP_OK;
 }
 
-static Fls_IpStatus run_cmd_no_data(uint32_t seq_id)
+FLS_RAMFUNC static Fls_IpStatus run_cmd_no_data(uint32_t seq_id)
 {
     FLEXSPI_IPRXFCR |= FLEXSPI_IPRXFCR_CLRIPRXF;
     FLEXSPI_INTR     = FLEXSPI_INTR_IPCMDDONE | FLEXSPI_INTR_IPCMDERR | FLEXSPI_INTR_IPCMDGE;
@@ -229,12 +320,12 @@ static Fls_IpStatus run_cmd_no_data(uint32_t seq_id)
     return wait_ip_cmd_done();
 }
 
-Fls_IpStatus FlexSPI_WriteEnable(void)
+FLS_RAMFUNC Fls_IpStatus FlexSPI_WriteEnable(void)
 {
     return run_cmd_no_data(FLS_LUT_SEQ_WRITE_ENABLE);
 }
 
-Fls_IpStatus FlexSPI_WriteDisable(void)
+FLS_RAMFUNC Fls_IpStatus FlexSPI_WriteDisable(void)
 {
     return run_cmd_no_data(FLS_LUT_SEQ_WRITE_DISABLE);
 }

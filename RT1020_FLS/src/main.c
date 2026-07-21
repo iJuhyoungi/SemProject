@@ -151,6 +151,82 @@ static void verify_read(void)
                                         : "\r\n[FLS] READ MISMATCH\r\n");
 }
 
+/* 8바이트를 라벨과 함께 16진수로 찍는다. */
+static void dump8(const char *label, const uint8_t *d)
+{
+    uint32_t i;
+
+    UART1_SendString(label);
+    for (i = 0u; i < 8u; i++)
+    {
+        UART1_SendChar(' ');
+        uart_hex8(d[i]);
+    }
+    UART1_SendString("\r\n");
+}
+
+static void report_erase(void)
+{
+    uint8_t        before[8];
+    uint8_t        after[8];
+    Fls_EraseTrace trace;
+    Fls_IpStatus   st;
+    uint32_t       i;
+    uint32_t       blank = 1u;
+
+    UART1_SendString("[FLS] --- sector erase @0x7FF000 ---\r\n");
+
+    /* ① 안전장치부터 시험한다. 이미지 영역(0x000000)은 거부되어야 한다. */
+    st = Fls_EraseSector(0x00000000u, &trace);
+    UART1_SendString("[FLS]   guard 0x000000 : ");
+    UART1_SendString((st == FLS_IP_E_FORBIDDEN) ? "REJECTED (정상)\r\n"
+                                                : "!!! 통과됨 - 중단 !!!\r\n");
+    if (st != FLS_IP_E_FORBIDDEN)
+    {
+        return;   /* 가드가 안 먹으면 진짜 erase 는 시도조차 하지 않는다 */
+    }
+
+    /* ② erase 전 내용 */
+    if (FlexSPI_ReadData(FLS_TEST_SECTOR, before, 8u) == FLS_IP_OK)
+    {
+        dump8("[FLS]   before :", before);
+    }
+
+    st = Fls_EraseSector(FLS_TEST_SECTOR, &trace);
+    if (st != FLS_IP_OK)
+    {
+        UART1_SendString("[FLS]   erase FAILED, status=");
+        UART1_SendHex32((uint32_t)st);
+        UART1_SendString("\r\n");
+        return;
+    }
+    
+    /* erase 가 진짜 실행됐다는 증거: 명령 직후 WIP=1, 그리고 폴링 횟수 */
+    UART1_SendString("[FLS]   SR after cmd = 0x");
+    uart_hex8(trace.sr_after_cmd);
+    UART1_SendString(" (WIP=");
+    UART1_SendChar((trace.sr_after_cmd & FLS_STATUS_WIP) ? '1' : '0');
+    UART1_SendString(")  poll count = ");
+    UART1_SendHex32(trace.poll_count);
+    UART1_SendString("\r\n");
+
+    /* ④ erase 후 내용 — 전부 0xFF 여야 한다 */
+    if (FlexSPI_ReadData(FLS_TEST_SECTOR, after, 8u) == FLS_IP_OK)
+    {
+        dump8("[FLS]   after  :", after);
+
+        for (i = 0u; i < 8u; i++)
+        {
+            if (after[i] != 0xFFu)
+            {
+                blank = 0u;
+            }
+        }   
+        UART1_SendString(blank ? "[FLS]   ERASE OK (all 0xFF)\r\n"
+                                : "[FLS]   ERASE INCOMPLETE\r\n");
+    }                          
+}
+
 int main(void)
 {
     UART1_SendString("\r\n=============================\r\n");
@@ -164,6 +240,8 @@ int main(void)
     verify_read();
 
     report_wel_latch();
+
+    report_erase();         // 실험한 섹터를 실제로 erase하고 WIP 폴링 구간은 ITCM에서 동작
 
     uint32_t beat = 0;
     while (1)

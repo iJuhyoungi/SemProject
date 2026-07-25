@@ -2,6 +2,7 @@
 #include "uart.h"
 #include "led.h"
 #include "flexspi_ip.h"
+#include "Fls.h"
 
 /* busy-wait */
 static void delay_busy(volatile uint32_t n)
@@ -303,6 +304,69 @@ static void report_ebw_demo(void)
 }
 
 
+/* Std_ReturnType 을 사람이 읽을 수 있게 출력한다. */
+static void print_ret(const char *label, Std_ReturnType r)
+{
+    UART1_SendString(label);
+    UART1_SendString((r == E_OK) ? " E_OK\r\n" : " E_NOT_OK\r\n");
+}
+
+/* 요청한 job 이 끝날 때까지 Fls_MainFunction 을 반복 호출한다.
+ * 실제 시스템에서는 스케줄러가 주기적으로 부르지만, 여기서는 루프로 흉내낸다. */
+static MemIf_JobResultType fls_wait_job(void)
+{
+    while (Fls_GetJobResult() == MEMIF_JOB_PENDING)
+    {
+        Fls_MainFunction();
+    }
+    return Fls_GetJobResult();
+}
+
+static void report_fls_facade(void)
+{
+    uint8_t        wbuf[8] = { 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88 };
+    uint8_t        rbuf[8];
+    Std_ReturnType r;
+    uint32_t       i;
+    uint32_t       match = 1u;
+
+    UART1_SendString("[FLS] === F-5 MCAL Fls facade (비동기 job) ===\r\n");
+    Fls_Init(&Fls_Config);
+
+    /* 1. 비동기 erase: 요청은 즉시 반환하고, Fls_MainFunction 이 실제로 지운다. */
+    r = Fls_Erase(0x007FF000u, 4096u);
+    print_ret("[FLS]   Fls_Erase req :", r);
+    UART1_SendString((fls_wait_job() == MEMIF_JOB_OK)
+                         ? "[FLS]   erase result : MEMIF_JOB_OK\r\n"
+                         : "[FLS]   erase result : FAILED\r\n");
+
+    /* 2. 비동기 write. wbuf 는 스택(RAM)에 있으므로 program 이 안전하게 읽는다. */
+    r = Fls_Write(0x007FF000u, wbuf, 8u);
+    print_ret("[FLS]   Fls_Write req :", r);
+    UART1_SendString((fls_wait_job() == MEMIF_JOB_OK)
+                         ? "[FLS]   write result : MEMIF_JOB_OK\r\n"
+                         : "[FLS]   write result : FAILED\r\n");
+
+    /* 3. 비동기 read 후 방금 쓴 값과 비교한다. */
+    r = Fls_Read(0x007FF000u, rbuf, 8u);
+    print_ret("[FLS]   Fls_Read req  :", r);
+    (void)fls_wait_job();
+    for (i = 0u; i < 8u; i++)
+    {
+        if (rbuf[i] != wbuf[i])
+        {
+            match = 0u;
+        }
+    }
+    UART1_SendString(match ? "[FLS]   read == write : OK\r\n"
+                           : "[FLS]   read == write : MISMATCH\r\n");
+
+    /* 4. DET 검증: 이미지 영역(허용 밖) 지우기 요청은 거부되어야 한다. */
+    UART1_SendString("[FLS]   -- DET test: 이미지 영역(0x0) erase 요청 --\r\n");
+    r = Fls_Erase(0x00000000u, 4096u);
+    print_ret("[FLS]   Fls_Erase(0x0):", r); /* 기대: E_NOT_OK 와 [DET] 로그 */
+}
+
 int main(void)
 {
     UART1_SendString("\r\n=============================\r\n");
@@ -320,6 +384,9 @@ int main(void)
     report_erase();         // 실험한 섹터를 실제로 erase하고 WIP 폴링 구간은 ITCM에서 동작
     report_program();
     report_ebw_demo();
+
+    /* F-5: MCAL Fls facade 를 비동기 job 모델로 시험한다. */
+    report_fls_facade();
 
     uint32_t beat = 0;
     while (1)

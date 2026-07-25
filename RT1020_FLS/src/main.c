@@ -3,6 +3,7 @@
 #include "led.h"
 #include "flexspi_ip.h"
 #include "Fls.h"
+#include "Fee.h"
 
 /* busy-wait */
 static void delay_busy(volatile uint32_t n)
@@ -367,6 +368,33 @@ static void report_fls_facade(void)
     print_ret("[FLS]   Fls_Erase(0x0):", r); /* 기대: E_NOT_OK 와 [DET] 로그 */
 }
 
+static void report_fee(void)
+{
+    uint8_t        buf[8];
+    Std_ReturnType r;
+
+    UART1_SendString("[FEE] === F-6a Fee init/scan (빈 flash) ===\r\n");
+
+    /* 결정적 테스트를 위해 두 뱅크 헤더 섹터를 지워 '빈 Fee 영역' 을 만든다. */
+    Fls_Erase(0x00780000u, 4096u);
+    (void)fls_wait_job();
+    Fls_Erase(0x00788000u, 4096u);
+    (void)fls_wait_job();
+
+    Fee_Init();
+    UART1_SendString((Fee_GetStatus() == MEMIF_IDLE)
+                         ? "[FEE]   Fee_Init : MEMIF_IDLE\r\n"
+                         : "[FEE]   Fee_Init : FAILED\r\n");
+
+    /* 빈 flash 라 블록 1 은 아직 없다 → E_NOT_OK 여야 한다. */
+    r = Fee_Read(1u, 0u, buf, 8u);
+    print_ret("[FEE]   Fee_Read(blk1, 빈상태):", r);
+
+    /* config 에 없는 블록 99 → E_NOT_OK 와 [DET] INVALID_BLOCK. */
+    r = Fee_Read(99u, 0u, buf, 8u);
+    print_ret("[FEE]   Fee_Read(blk99, 없음) :", r);
+}
+
 int main(void)
 {
     UART1_SendString("\r\n=============================\r\n");
@@ -387,6 +415,9 @@ int main(void)
 
     /* F-5: MCAL Fls facade 를 비동기 job 모델로 시험한다. */
     report_fls_facade();
+
+    /* F-6a: Fee 레이아웃 스캔 (빈 flash 에서 '블록 없음' 판정 확인). */
+    report_fee();
 
     uint32_t beat = 0;
     while (1)

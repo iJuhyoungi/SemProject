@@ -1,8 +1,11 @@
-# FlexSPI IP 명령 트러블슈팅 기록 (F-2 ~ F-3)
+# FlexSPI IP 명령 트러블슈팅 기록 (F-2 ~ F-4c)
 
-> JEDEC ID·status·read 세 명령을 IP 명령 경로로 만들면서 겪은 실패와 그 추적 과정.
-> 결론부터: **세 번의 실패 중 두 번이 LUT 인코딩 오타였고, 그것을 잡아낸 것은
-> 열 번의 가설이 아니라 레지스터 덤프 한 줄이었다.**
+> IP 명령 경로로 flash 를 읽고 지우고 쓰면서 겪은 실패와 추적 과정.
+> - **F-2~F-3 (사례 1~3)**: JEDEC·status·read. 두 번이 LUT 오타였고, 잡아낸 건 열 번의
+>   가설이 아니라 레지스터 덤프 한 줄이었다.
+> - **F-4c (사례 4~6)**: page program. HardFault(I-cache) → 데이터 오염(TX FIFO 순서) →
+>   debug wedge(복구) 3중 난관. UART 로 못 찍는 상황을 **pyocd 로 코어·flash 를 직접 읽어**
+>   뚫었다.
 
 ---
 
@@ -276,7 +279,191 @@ F-4 를 a/b/c 로 쪼갠 이유가 이것이다.
 
 ---
 
-## Part 6. 확정된 사실 모음 (F-4 이후에도 유효)
+## Part 6. 사례 4 (F-4c) — HardFault: 자기가 딛고 선 땅을 fetch 하다 죽다
+
+### 증상
+
+page program 을 넣자 실행이 멈추고 폴트가 떴다.
+
+```
+[FLS] --- page program @0x7FF000 ---
+[FAULT] HardFault
+CFSR=0x00000100   HFSR=0x40000000
+```
+
+### 추적
+
+`CFSR=0x100` → bit8 = **IBUSERR (Instruction Bus Error)**. 명령어를 *fetch* 하다
+버스 에러다. fault handler 에 스택 PC 를 찍게 고쳐(naked 래퍼로 예외 프레임에서
+`frame[6]`) 다시 잡으니:
+
+```
+stkPC=0x60002D28   ← FLASH 주소
+stkLR=0x000001FB   ← ITCM(program_core 내부)
+```
+
+CPU 는 ITCM(program_core)에서 도는데, **flash 주소 0x60002D28 을 fetch 하려다 터졌다.**
+program_core 코드에는 flash 로 나가는 `bl` 이 하나도 없다(디스어셈블로 확인). 그런데도
+flash 를 건드린 범인은 **CPU 하드웨어**였다.
+
+### 원인 — I-cache 의 speculative linefill
+
+Cortex-M7 은 I-cache 가 켜져 있으면 ITCM 코드를 실행하는 중에도 **분기 예측으로
+flash 코드를 미리 당겨오려(speculative I-cache linefill)** 한다. page program 이
+flash 를 busy 로 만든 순간, 그 예측 fetch 가 busy flash 로 향해 IBUSERR 로 죽는다.
+
+erase 가 먼저 통과했던 건 그 return 경로 코드가 이미 I-cache 에 올라와 있어(캐시 히트)
+flash 접근이 없었던 우연이다. 근본적으로 **XIP self-programming 의 정석 함정**이다.
+
+### 해법 — 작업 구간 동안 I-cache 를 끈다
+
+`Fls_ProgramPage`(flash, idle 시점)에서 `SCB_CCR`(0xE000ED14) bit17(IC)을 clear,
+작업 후 재활성(+ `ICIALLU` 무효화). 끄기는 트리거 **전**(flash idle), 켜기는 WIP=0
+**복귀 후**(flash idle)에 실행하므로 안전하다. SCB 는 시스템 영역이라 flash busy 와 무관.
+
+```c
+__asm volatile ("cpsid i" ::: "memory");
+icache_disable();                       /* speculative flash fetch 차단 */
+st = program_core(addr, data, len, trace);
+icache_enable();
+__asm volatile ("cpsie i" ::: "memory");
+```
+
+### 교훈
+
+- **IBUSERR + stkPC 가 flash + 실행은 ITCM** = 하드웨어 speculative fetch. 코드에 `bl`
+  이 없어도 CPU 가 flash 를 건드린다.
+- self-programming 은 코드뿐 아니라 **I-cache/prefetch 까지** flash 밖으로 격리해야 한다.
+
+---
+
+## Part 7. 사례 5 (F-4c) — 썼는데 엉뚱한 값(0x0200)이 프로그램되다
+
+### 증상
+
+폴트는 사라졌지만 데이터가 틀렸다. `DE AD BE EF...` 를 썼는데 읽으면 다른 값.
+
+```
+[FLS]   wrote  : DE AD BE EF CA FE 12 34
+[FLS]   read   : 00 02 00 00 00 00 00 00     ← ???
+```
+
+### 추적 — firmware 를 믿지 말고 하드웨어에 직접 물어봐라
+
+firmware 의 read 가 틀린 건지, flash 가 실제로 그런지부터 갈랐다. **pyocd 로 flash 를
+직접 읽으니**(AHB 경로) 실제로 `00 02 00 00` 이 들어 있었다 — read 는 정상, **프로그램이
+틀린 데이터를 썼다.**
+
+```
+$ pyocd commander -t mimxrt1020 -c "halt" -c "read8 0x607ff000 8" -c "exit"
+607ff000:  00 02 00 00  00 00 00 00
+```
+
+그리고 이 값의 정체 — **`0x0200` 은 부팅 FCB 의 `deviceModeArg`**(QE 설정 SR1=0x00,
+SR2=0x02)다. 즉 우리 데이터가 아니라 **부팅 때 ROM 이 QE 를 켜며 남긴 잔재**가 프로그램됐다.
+
+`IPTXFSTS[FILL]` 을 찍어 TX FIFO 를 추적:
+
+| 시점 | FILL | 해석 |
+|---|---|---|
+| `CLRIPTXF` 직후 | 0 | 클리어는 정상 동작 |
+| TFDR 채운 뒤 | 8 | 내 데이터는 IP TX FIFO 에 들어감 |
+
+내 데이터는 FIFO 에 있는데도 flash 는 잔재를 받았다 → **채우기 순서/타이밍**이 문제였다.
+
+### 원인 — TX FIFO 채우기 순서가 SDK 와 달랐다
+
+세 가지 잘못된 시도가 모두 실패했다:
+
+1. **트리거 전 pre-fill**: `CLRIPTXF` 리셋과 겹쳐 데이터 유실 → FlexSPI 가 TX 를 기다리며
+   SCLK 멈춤(stall) → **hang** (사례 6).
+2. **트리거 후 직접 쓰기(push 없음)**: 데이터가 실제 FIFO 로 안 감.
+3. **IPTXWE 를 사전 클리어한 뒤 게이팅**: `IPTXWE` 를 미리 지워서 게이트가 안 열림 →
+   채우기 건너뜀 → 잔재 프로그램.
+
+### 해법 — NXP SDK `FLEXSPI_WriteBlocking` 순서 그대로
+
+```
+① CLRIPTXF (TX FIFO 클리어)
+② INTR clear  ← IPTXWE 는 건드리지 말 것
+③ IPCR0(주소) / IPCR1(ISEQID|IDATSZ) 설정
+④ IPCMD = TRG (트리거 먼저!)
+⑤ while (sent < len):
+       if (INTR & IPTXWE):           # 빈 공간 생김
+           TFDR[0..1] 채우고
+           INTR = IPTXWE             # 워터마크 push
+```
+
+핵심은 **트리거를 먼저 하고, `IPTXWE` 를 사전 클리어하지 않는 것.** 이러니:
+
+```
+[FLS]   wrote  : DE AD BE EF CA FE 12 34
+[FLS]   read   : DE AD BE EF CA FE 12 34
+[FLS]   PROGRAM OK
+```
+
+### 교훈
+
+- **firmware 의 read 를 그대로 믿지 말고 pyocd 로 flash 를 직접 읽어** 어느 쪽이 틀렸는지
+  가른다. read 는 멀쩡한데 write 가 범인일 수 있다.
+- 틀린 값이 **무의미한 쓰레기가 아니라 의미 있는 상수(0x0200=deviceModeArg)** 면, 그 상수의
+  출처를 역추적하는 게 지름길이다.
+- TX FIFO 는 RX 와 대칭이 아니다. **트리거 후 IPTXWE 게이트로 채운다**(SDK 순서 필수).
+
+---
+
+## Part 8. 사례 6 (F-4c) — hang 이 debug port 까지 물어버리다
+
+### 증상
+
+page program 이 stall 되면 로그가 그 자리에서 멈추고(hang), 그 뒤 **pyocd 명령이 전부
+timeout** — `reset`, `flash`, `commander halt` 모두 응답 없음. 보드가 통째로 wedge 됐다.
+
+### 원인
+
+FlexSPI 가 TX 데이터를 기다리며 SCLK 를 멈춘(stall) 상태에서, CPU 가 레지스터를 읽으면
+그 AHB 트랜잭션이 끝나지 않아 **CPU 가 명령 중간에 멈춘다(unhaltable).** 이 상태는 소프트
+timeout(FLS_IP_TIMEOUT)으로도, 디버거 halt 로도 못 빠져나온다.
+
+### 복구 — 파워사이클 + pre-reset flash
+
+- **`--connect=under-reset` 은 RT1020 에서 안 됨**: nRESET 이 debug port 까지 리셋해
+  `SWD/JTAG communication failure (No ACK)` 로 실패 (클럭 낮춰도 동일).
+- **되는 방법**:
+  1. USB 케이블 뽑았다 꽂기 → FlexSPI 하드웨어까지 리셋.
+  2. 곧바로 **`--connect=pre-reset`** 로 플래시. 리셋 펄스 후 부팅 ROM 단계에서 halt 를
+     잡아, hung 코드가 실행되기 전에 새 바이너리를 굽는다.
+
+```bash
+pyocd flash build/rt1020_fls.bin -t mimxrt1020 \
+      --base-address 0x60000000 --erase sector --connect=pre-reset
+```
+
+### 교훈
+
+- 잘못된 flash 명령은 CPU 뿐 아니라 **디버그 접근까지 wedge** 시킬 수 있다.
+- RT1020 은 `under-reset` 이 아니라 **`pre-reset`** 으로 복구한다.
+- self-programming 실험 전에 **복구 절차를 먼저 손에 쥐고** 시작하라.
+
+---
+
+## Part 9. 방법론 보강 — pyocd 로 하드웨어를 직접 심문한다
+
+Part 5 의 "덤프가 추측보다 낫다"를 F-4c 에서 한 단계 더 밀어붙였다. UART 로 못 찍는
+상황(hang, RAM 함수 안)에서는 **pyocd 로 코어와 메모리를 직접 읽는다.**
+
+| 무엇을 | 어떻게 | 무엇을 알려주나 |
+|---|---|---|
+| 폴트 위치 | fault handler 가 스택 PC(`frame[6]`) 출력 | 어느 주소를 fetch 하다 죽었나 (flash? ITCM?) |
+| flash 실제 내용 | `pyocd commander -c "halt" -c "read8 0x607ff000 8"` | firmware read 가 틀렸나, 데이터가 틀렸나 |
+| hang 지점 | `pyocd commander -c "halt" -c "reg pc"` (wedge 안 됐을 때) | 어느 루프/명령에서 멈췄나 |
+
+> AHB 주소 = `0x6000_0000 + flash offset`. 즉 flash 오프셋 `0x7FF000` → `0x607FF000`.
+> 쉘 profile 에 `set -e` 가 있으면 `pkill ... || true` 로 감싼다.
+
+---
+
+## Part 10. 확정된 사실 모음 (F-4 이후에도 유효)
 
 - FlexSPI base `0x402A_8000`. `IPRXFSTS`=0xF0(FILL[7:0], 단위 64비트),
   `IPRXFCR`=0xB8(bit0 `CLRIPRXF`), `RFDR`=0x100, `LUT`=0x200.
@@ -287,7 +474,15 @@ F-4 를 a/b/c 로 쪼갠 이유가 이것이다.
 - IP 명령은 **항상 instruction 0 부터** 실행된다. `FLSHCR2[CLRINSTRPTR]` 은
   AHB read 전용이라 IP 명령과 무관하다.
 - 부팅 FCB 가 쓰는 슬롯 **0/1/3/4/5/8/9/11 은 건드리지 않는다.** 우리 악보는
-  2(status)/6(read)/7(JEDEC)/10(WREN)/12(WRDI)에 있고 13/14/15 가 남아 있다.
+  2(status)/6(read)/7(JEDEC)/10(WREN)/12(WRDI)/13(erase)/14(program)에 있고 15 가 남아 있다.
+- **쓰기 명령**(page program): `IPTXFCR`=0xBC(bit0 `CLRIPTXF`), `TFDR`=0x180,
+  `IPTXFSTS`=0xF4, `INTR[IPTXWE]`=bit6(0x40). 순서 = CLRIPTXF → INTR clear(IPTXWE 제외)
+  → IPCR0/IPCR1 → **트리거** → IPTXWE 게이트로 TFDR 채우고 push. 순서가 틀리면 부팅
+  잔재(deviceModeArg 0x0200)가 프로그램된다.
+- **erase/program 구간은 I-cache 를 끈다** (`SCB_CCR` 0xE000ED14 bit17). 안 끄면 flash-busy
+  중 speculative linefill → IBUSERR. 인터럽트도 `cpsid i` 로 막는다 (ISR 은 flash 에 있음).
+- **RM 에 FlexSPI 레지스터 맵이 두 종류** 섞여 있다. 우리 것은 IPCR0=0xA0/TFDR=0x180/
+  RFDR=0x100 계열(Ch.27). IPCR0=0x90/IPTXDAT=0xA0/IPCR2=0x98 계열은 **다른 것**이니 헷갈리지 말 것.
 
 ---
 

@@ -8,6 +8,10 @@
 #define STOP   0x00   /* 시퀀스 끝 — flexspi_nor_config.h 엔 없어 여기서만 정의 */
 #endif
 
+#ifndef CMD_WRITE_SDR
+#define CMD_WRITE_SDR  0x08   /* 데이터 송신 opcode — 헤더엔 READ(0x09)만 있어 여기서 정의 */
+#endif
+
 FLS_RAMFUNC static Fls_IpStatus wait_ip_cmd_done(void)
 {
     uint32_t guard = FLS_IP_TIMEOUT;
@@ -99,6 +103,14 @@ void FlexSPI_InstallLut(void)
     FLEXSPI_LUT[4u * FLS_LUT_SEQ_SECTOR_ERASE + 2u] = 0u;
     FLEXSPI_LUT[4u * FLS_LUT_SEQ_SECTOR_ERASE + 3u] = 0u;
 
+    /* PAGE PROGRAM: 0x02 → 24비트 주소 → 데이터 송신, 전부 1가닥 */
+    FLEXSPI_LUT[4u * FLS_LUT_SEQ_PAGE_PROGRAM + 0u] =
+        FLEXSPI_LUT_SEQ(CMD_SDR, PAD_1, 0x02, CMD_RADDR_SDR, PAD_1, 0x18);
+    FLEXSPI_LUT[4u * FLS_LUT_SEQ_PAGE_PROGRAM + 1u] =
+        FLEXSPI_LUT_SEQ(CMD_WRITE_SDR, PAD_1, 0x04, STOP, PAD_1, 0x00);
+    FLEXSPI_LUT[4u * FLS_LUT_SEQ_PAGE_PROGRAM + 2u] = 0u;
+    FLEXSPI_LUT[4u * FLS_LUT_SEQ_PAGE_PROGRAM + 3u] = 0u;
+
     FLEXSPI_LUTKEY = FLEXSPI_LUTKEY_VALUE;
     FLEXSPI_LUTCR  = FLEXSPI_LUTCR_LOCK;
 }
@@ -184,6 +196,167 @@ Fls_IpStatus Fls_EraseSector(uint32_t addr, Fls_EraseTrace *trace)
     * (지금 이 프로젝트는 인터럽트를 안 쓰지만 규칙은 규칙이다.) */
     __asm volatile ("cpsid i" ::: "memory");
     st = erase_core(addr, trace);
+    __asm volatile ("cpsie i" ::: "memory");
+
+    return st;
+}
+
+/* Cortex-M7 I-cache 제어 (SCB_CCR bit17=IC). SCB 는 flash 가 아니라 시스템 영역이라 안전.
+ * flash 를 쓰는 동안 I-cache 가 flash 로 speculative linefill 을 하면, 그 순간 flash 는
+ * busy 라 버스 에러(IBUSERR)로 죽는다. 그래서 작업 구간 동안 I-cache 를 꺼둔다. */
+#define SCB_CCR_REG   (*(volatile uint32_t *)0xE000ED14u)
+#define SCB_CCR_IC    (1u << 17)
+#define SCB_ICIALLU   (*(volatile uint32_t *)0xE000EF50u)
+
+static void icache_disable(void)
+{
+    __asm volatile ("dsb 0xf" ::: "memory");
+    SCB_CCR_REG &= ~SCB_CCR_IC;
+    __asm volatile ("dsb 0xf" ::: "memory");
+    __asm volatile ("isb 0xf" ::: "memory");
+}
+
+static void icache_enable(void)
+{
+    __asm volatile ("dsb 0xf" ::: "memory");
+    SCB_ICIALLU = 0u;                  /* 전체 무효화 */
+    __asm volatile ("dsb 0xf" ::: "memory");
+    SCB_CCR_REG |= SCB_CCR_IC;
+    __asm volatile ("dsb 0xf" ::: "memory");
+    __asm volatile ("isb 0xf" ::: "memory");
+}
+
+/* ===== 위험 구간 — ITCM 에서 실행 =====
+* 보낼 데이터(data)도 반드시 RAM(스택/DTCM)에 있어야 한다.
+* flash 의 문자열/const 를 넘기면 여기서 그것을 읽다 죽는다. */
+FLS_RAMFUNC static Fls_IpStatus program_core(uint32_t addr, const uint8_t *data,
+                                            uint32_t len, Fls_EraseTrace *trace)
+{
+    Fls_IpStatus st;
+    uint8_t      sr;
+    uint32_t     n = 0u;
+    uint32_t     i;
+    uint32_t     b;
+
+    /* ① 쓰기 허락 (WEL: 0 -> 1) */
+    st = FlexSPI_WriteEnable();
+    if (st != FLS_IP_OK)
+    {
+        return st;
+    }
+
+    /* ② TX FIFO 비우고(부팅 잔재 0x0200 제거) → 명령 설정 → 트리거 → 곧바로 TFDR 채우기.
+     * 작은 데이터(<=FIFO)는 명령 컨텍스트가 활성인 트리거 직후에 TFDR 을 직접 쓰면
+     * data 위상 전에 FIFO 에 실린다. IPTXWE(edge-latched) 게이팅은 오히려 채우기를 건너뛴다. */
+    /* NXP SDK FLEXSPI_WriteBlocking 순서: FIFO 클리어 → 명령 설정 → 트리거 →
+     * IPTXWE(빈 공간 생김) 를 폴링하며 워터마크씩 채우고 push. IPTXWE 는 사전 클리어하지 않는다. */
+    FLEXSPI_IPTXFCR |= FLEXSPI_IPTXFCR_CLRIPTXF;
+    FLEXSPI_INTR  = FLEXSPI_INTR_IPCMDDONE | FLEXSPI_INTR_IPCMDERR | FLEXSPI_INTR_IPCMDGE;
+    FLEXSPI_IPCR0 = addr;
+    FLEXSPI_IPCR1 = FLEXSPI_IPCR1_ISEQID(FLS_LUT_SEQ_PAGE_PROGRAM)
+                | FLEXSPI_IPCR1_ISEQNUM(0u)
+                | FLEXSPI_IPCR1_IDATSZ(len);
+    FLEXSPI_IPCMD = FLEXSPI_IPCMD_TRG;
+
+    {
+        uint32_t sent  = 0u;
+        uint32_t guard = FLS_IP_TIMEOUT;
+        while (sent < len)
+        {
+            if ((FLEXSPI_INTR & FLEXSPI_INTR_IPTXWE) != 0u)
+            {
+                for (i = 0u; (i < 2u) && (sent < len); i++)
+                {
+                    uint32_t w = 0u;
+                    for (b = 0u; (b < 4u) && ((sent + b) < len); b++)
+                    {
+                        w |= (uint32_t)data[sent + b] << (8u * b);
+                    }
+                    FLEXSPI_TFDR[i] = w;
+                    sent += 4u;
+                }
+                FLEXSPI_INTR = FLEXSPI_INTR_IPTXWE;
+                guard = FLS_IP_TIMEOUT;
+            }
+            else if (--guard == 0u)
+            {
+                break;
+            }
+        }
+    }
+
+    st = wait_ip_cmd_done();
+    if (st != FLS_IP_OK)
+    {
+        FLEXSPI_IPTXFCR |= FLEXSPI_IPTXFCR_CLRIPTXF;
+        return st;
+    }
+
+    /* ④ 첫 status — program 이 진짜 시작됐는지 (WIP=1) */
+    st = FlexSPI_ReadStatus(&sr);
+    if (st != FLS_IP_OK)
+    {
+        return st;
+    }
+    trace->sr_after_cmd = sr;
+
+    /* ⑤ WIP 폴링. program 은 1ms 미만이라 erase 보다 훨씬 짧다.
+     * WIP 이 끝내 안 내려가면 무한 루프에 빠지므로 상한을 둔다 (진단용). */
+    while ((sr & FLS_STATUS_WIP) != 0u)
+    {
+        st = FlexSPI_ReadStatus(&sr);
+        if (st != FLS_IP_OK)
+        {
+            trace->poll_count = n;
+            return st;
+        }
+        n++;
+        if (n >= 2000000u)
+        {
+            trace->poll_count = n;
+            FLEXSPI_IPTXFCR |= FLEXSPI_IPTXFCR_CLRIPTXF;
+            return FLS_IP_E_TIMEOUT;
+        }
+    }
+    trace->poll_count = n;
+
+    FLEXSPI_IPTXFCR |= FLEXSPI_IPTXFCR_CLRIPTXF;
+    return FLS_IP_OK;
+}
+/* ===== 위험 구간 끝 ===== */
+
+/* 가드 통과 후 위험 구간으로 넘긴다. erase 와 같은 구조. */
+Fls_IpStatus Fls_ProgramPage(uint32_t addr, const uint8_t *data, uint32_t len, Fls_EraseTrace *trace)
+{
+    Fls_IpStatus st;
+
+    if ((data == 0) || (trace == 0))
+    {
+        return FLS_IP_E_PARAM;
+    }
+    /* F-4c 는 한 번의 FIFO 채움으로 끝나는 크기만 다룬다 (전체 256B 페이지는 F-5 몫). */
+    if ((len == 0u) || (len > FLS_IP_READ_MAX))
+    {
+        return FLS_IP_E_PARAM;
+    }
+    /* 허용 영역 밖이면 이미지 보호를 위해 거부 */
+    if ((addr < FLS_WRITE_AREA_BASE) || (addr >= FLS_WRITE_AREA_LIMIT))
+    {
+        return FLS_IP_E_FORBIDDEN;
+    }
+    /* page program 은 256B 페이지 경계를 넘을 수 없다 (넘으면 페이지 처음으로 감긴다) */
+    if (((addr & (FLS_PAGE_SIZE - 1u)) + len) > FLS_PAGE_SIZE)
+    {
+        return FLS_IP_E_PARAM;
+    }
+
+    trace->sr_after_cmd = 0u;
+    trace->poll_count   = 0u;
+
+    __asm volatile ("cpsid i" ::: "memory");
+    icache_disable();                       /* 작업 구간 동안 flash 로의 speculative fetch 차단 */
+    st = program_core(addr, data, len, trace);
+    icache_enable();
     __asm volatile ("cpsie i" ::: "memory");
 
     return st;

@@ -227,6 +227,82 @@ static void report_erase(void)
     }                          
 }
 
+static void report_program(void)
+{
+    /* 패턴은 스택(DTCM)에 둔다 — program_core 가 ITCM 에서 이걸 읽으므로 RAM 이어야 한다. */
+    uint8_t        pattern[8] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE, 0x12, 0x34 };
+    uint8_t        readback[8];
+    Fls_EraseTrace trace;
+    Fls_IpStatus   st;
+    uint32_t       i;
+    uint32_t       match = 1u;
+
+    UART1_SendString("[FLS] --- page program @0x7FF000 ---\r\n");
+
+    /* report_erase 가 방금 이 섹터를 0xFF 로 지웠다. 그 위에 패턴을 쓴다. */
+    st = Fls_ProgramPage(FLS_TEST_SECTOR, pattern, 8u, &trace);
+
+    UART1_SendString("[FLS]   SR after cmd = 0x");
+    uart_hex8(trace.sr_after_cmd);
+    UART1_SendString(" (WIP=");
+    UART1_SendChar((trace.sr_after_cmd & FLS_STATUS_WIP) ? '1' : '0');
+    UART1_SendString(")  poll count = ");
+    UART1_SendHex32(trace.poll_count);
+    UART1_SendString("\r\n");
+
+    if (st != FLS_IP_OK)
+    {
+        UART1_SendString("[FLS]   program FAILED\r\n");
+        return;
+    }
+
+    dump8("[FLS]   wrote  :", pattern);
+
+    if (FlexSPI_ReadData(FLS_TEST_SECTOR, readback, 8u) == FLS_IP_OK)
+    {
+        dump8("[FLS]   read   :", readback);
+        for (i = 0u; i < 8u; i++)
+        {
+            if (readback[i] != pattern[i])
+            {
+                match = 0u;
+            }
+        }
+        UART1_SendString(match ? "[FLS]   PROGRAM OK\r\n"
+                                : "[FLS]   PROGRAM MISMATCH\r\n");
+    }
+}
+
+/* NOR flash 의 정체 실증: program 은 비트를 1->0 으로만 바꾼다.
+* 지우지 않고 덮어쓰면 원하는 값이 아니라 (기존 AND 신규) 가 나온다. */
+static void report_ebw_demo(void)
+{
+    uint8_t        hi[8] = { 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0 };
+    uint8_t        lo[8] = { 0x0F, 0x0F, 0x0F, 0x0F, 0x0F, 0x0F, 0x0F, 0x0F };
+    uint8_t        rb[8];
+    Fls_EraseTrace trace;
+    uint32_t       addr = FLS_TEST_SECTOR + 16u;   /* 같은 섹터의 다른 자리 (이미 0xFF) */
+
+    UART1_SendString("[FLS] --- erase-before-write demo @+16 ---\r\n");
+
+    /* 0xFF 위에 0xF0 을 쓴다 → 0xFF AND 0xF0 = 0xF0 */
+    Fls_ProgramPage(addr, hi, 8u, &trace);
+    if (FlexSPI_ReadData(addr, rb, 8u) == FLS_IP_OK)
+    {
+        dump8("[FLS]   after 0xF0 :", rb);
+    }
+
+    /* 지우지 않고 0x0F 를 덮어쓴다 → 0xF0 AND 0x0F = 0x00 (0x0F 가 아니다!) */
+    Fls_ProgramPage(addr, lo, 8u, &trace);
+    if (FlexSPI_ReadData(addr, rb, 8u) == FLS_IP_OK)
+    {
+        dump8("[FLS]   after 0x0F :", rb);
+    }
+
+    UART1_SendString("[FLS]   -> 0x0F 를 썼는데 0x00. 비트는 1->0 만, 되돌리려면 erase 뿐.\r\n");
+}
+
+
 int main(void)
 {
     UART1_SendString("\r\n=============================\r\n");
@@ -242,6 +318,8 @@ int main(void)
     report_wel_latch();
 
     report_erase();         // 실험한 섹터를 실제로 erase하고 WIP 폴링 구간은 ITCM에서 동작
+    report_program();
+    report_ebw_demo();
 
     uint32_t beat = 0;
     while (1)

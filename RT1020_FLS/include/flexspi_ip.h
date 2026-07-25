@@ -14,13 +14,17 @@
 #define FLEXSPI_IPRXFCR         (*(volatile uint32_t *)(FLEXSPI_BASE + 0x0B8u))
 #define FLEXSPI_STS0            (*(volatile uint32_t *)(FLEXSPI_BASE + 0x0E0u))
 #define FLEXSPI_IPRXFSTS        (*(volatile uint32_t *)(FLEXSPI_BASE + 0x0F0u))
+#define FLEXSPI_IPTXFSTS        (*(volatile uint32_t *)(FLEXSPI_BASE + 0x0F4u))
 #define FLEXSPI_RFDR            ((volatile uint32_t *)(FLEXSPI_BASE + 0x100u))
+#define FLEXSPI_IPTXFCR         (*(volatile uint32_t *)(FLEXSPI_BASE + 0x0BCu))
+#define FLEXSPI_TFDR            ((volatile uint32_t *)(FLEXSPI_BASE + 0x180u))
 #define FLEXSPI_LUT             ((volatile uint32_t *)(FLEXSPI_BASE + 0x200u))
 
 /* INTR — 전부 write-1-to-clear */
 #define FLEXSPI_INTR_IPCMDDONE  (1u << 0)   /* IP 명령 완료 */
 #define FLEXSPI_INTR_IPCMDGE    (1u << 1)   /* 버스 사용 허가를 못 받음 */
 #define FLEXSPI_INTR_IPCMDERR   (1u << 3)   /* 시퀀스 실행 오류 */
+#define FLEXSPI_INTR_IPTXWE     (1u << 6)   /* IP TX FIFO 빈 공간 >= 워터마크 */
 
 /* STS0 — 둘 다 1 이어야 컨트롤러가 완전히 놀고 있는 것 */
 #define FLEXSPI_STS0_SEQIDLE    (1u << 0)
@@ -35,6 +39,7 @@
 
 #define FLEXSPI_IPCMD_TRG         (1u << 0)   /* 방아쇠 */
 #define FLEXSPI_IPRXFCR_CLRIPRXF  (1u << 0)   /* RX FIFO 비우기 */
+#define FLEXSPI_IPTXFCR_CLRIPTXF  (1u << 0)   /* TX FIFO 비우기 */
 #define FLEXSPI_LUTKEY_VALUE      0x5AF05AF0u
 #define FLEXSPI_LUTCR_LOCK        (1u << 0)
 #define FLEXSPI_LUTCR_UNLOCK      (1u << 1)
@@ -47,6 +52,7 @@
 #define FLS_LUT_SEQ_WRITE_ENABLE    10u
 #define FLS_LUT_SEQ_WRITE_DISABLE   12u
 #define FLS_LUT_SEQ_SECTOR_ERASE    13u
+#define FLS_LUT_SEQ_PAGE_PROGRAM    14u
 
 #define FLS_SECTOR_SIZE            4096u
 #define FLS_PAGE_SIZE              256u
@@ -82,6 +88,7 @@ Fls_IpStatus FlexSPI_ReadData(uint32_t addr, uint8_t *buf, uint32_t len);
 Fls_IpStatus FlexSPI_WriteEnable(void);
 Fls_IpStatus FlexSPI_WriteDisable(void);
 Fls_IpStatus Fls_EraseSector(uint32_t addr, Fls_EraseTrace *trace);
+Fls_IpStatus Fls_ProgramPage(uint32_t addr, const uint8_t *data, uint32_t len, Fls_EraseTrace *trace);
 
 #endif /* FLEXSPI_IP_H */
 

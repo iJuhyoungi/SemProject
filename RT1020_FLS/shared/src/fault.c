@@ -29,26 +29,37 @@ static void Fault_PrintReg(const char *name, uint32_t value)
     UART1_SendString("\r\n");
 }
 
-__attribute__((section(".boot_text"), noinline, used))
+/* naked: C 프롤로그가 스택을 건드리기 전에 예외 프레임 포인터를 확보한다.
+ * 하드웨어가 진입 시 [R0 R1 R2 R3 R12 LR PC xPSR] 를 스택에 쌓아둔다. */
+void HardFault_Handler_C(uint32_t *frame);
+
+__attribute__((section(".boot_text"), naked, used))
 void HardFault_Handler(void)
+{
+    __asm volatile (
+        "tst lr, #4            \n"   /* EXC_RETURN bit2: 0=MSP, 1=PSP */
+        "ite eq                \n"
+        "mrseq r0, msp         \n"
+        "mrsne r0, psp         \n"
+        "b HardFault_Handler_C \n"
+    );
+}
+
+__attribute__((section(".boot_text"), noinline, used))
+void HardFault_Handler_C(uint32_t *frame)
 {
     __asm volatile ("cpsid i");
 
     UART1_SendString("\r\n[FAULT] HardFault\r\n");
 
-    /* 먼저 읽고, 그 다음 출력 */
-    uint32_t cfsr  = SCB_CFSR_REG;
-    uint32_t hfsr  = SCB_HFSR_REG;
-    uint32_t mmfar = SCB_MMFAR_REG;
-    uint32_t bfar  = SCB_BFAR_REG;
-
     Fault_PrintReg("ABFSR", SCB_ABFSR_REG);
-    Fault_PrintReg("CFSR",  cfsr);
-    Fault_PrintReg("HFSR",  hfsr);
-    Fault_PrintReg("MMFAR", mmfar);
-    Fault_PrintReg("BFAR",  bfar);
+    Fault_PrintReg("CFSR",  SCB_CFSR_REG);
+    Fault_PrintReg("HFSR",  SCB_HFSR_REG);
+    Fault_PrintReg("MMFAR", SCB_MMFAR_REG);
+    Fault_PrintReg("BFAR",  SCB_BFAR_REG);
+    Fault_PrintReg("stkPC", frame[6]);   /* 폴트 난 명령어 주소 */
+    Fault_PrintReg("stkLR", frame[5]);   /* 복귀/호출 주소 */
 
-    while(1){}
     while (1) {
         __asm("nop");
     }

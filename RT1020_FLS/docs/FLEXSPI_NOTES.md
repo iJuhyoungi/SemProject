@@ -188,3 +188,4 @@ erase/program 을 명령으로 보내고 나면 flash 는 **내부적으로 바�
 - F-3: status(0x05)/read(0x03) — WIP/WEL 관찰 습관 만들기.
 - F-4: WREN → sector erase → page program → 리부팅 지속성. RAM 함수 도전.
 - F-5: MCAL Fls facade — 비동기 job 모델 (`MEMIF_JOB_PENDING`, `Fls_MainFunction`).
+  → 설계와 실측은 [FLS_FACADE.md](FLS_FACADE.md) 참고.

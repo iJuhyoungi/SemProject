@@ -258,29 +258,23 @@ FLS_RAMFUNC static Fls_IpStatus program_core(uint32_t addr, const uint8_t *data,
                 | FLEXSPI_IPCR1_IDATSZ(len);
     FLEXSPI_IPCMD = FLEXSPI_IPCMD_TRG;
 
+    /* 데이터를 TX FIFO 에 채운다. 워터마크(2워드=8B) 단위로 TFDR[0]/TFDR[1] 에 쓰고 push 한다.
+     * 이 하드웨어는 작은 write 에서 IPTXWE 가 첫 워터마크 뒤로는 재신호되지 않아, 실질적으로
+     * 한 워터마크(8B)까지만 안정적으로 전송된다. 그래서 더 큰 write 는 Fls_MainFunction 이
+     * maxWriteChunk(=8) 단위로 쪼개어 여러 번의 페이지 프로그램으로 넘긴다. */
     {
-        uint32_t sent  = 0u;
-        uint32_t guard = FLS_IP_TIMEOUT;
-        while (sent < len)
+        uint32_t words = (len + 3u) / 4u;
+        for (i = 0u; i < words; i++)
         {
-            if ((FLEXSPI_INTR & FLEXSPI_INTR_IPTXWE) != 0u)
+            uint32_t w = 0u;
+            for (b = 0u; (b < 4u) && (((i * 4u) + b) < len); b++)
             {
-                for (i = 0u; (i < 2u) && (sent < len); i++)
-                {
-                    uint32_t w = 0u;
-                    for (b = 0u; (b < 4u) && ((sent + b) < len); b++)
-                    {
-                        w |= (uint32_t)data[sent + b] << (8u * b);
-                    }
-                    FLEXSPI_TFDR[i] = w;
-                    sent += 4u;
-                }
-                FLEXSPI_INTR = FLEXSPI_INTR_IPTXWE;
-                guard = FLS_IP_TIMEOUT;
+                w |= (uint32_t)data[(i * 4u) + b] << (8u * b);
             }
-            else if (--guard == 0u)
+            FLEXSPI_TFDR[i & 1u] = w;
+            if (((i & 1u) == 1u) || (i == (words - 1u)))
             {
-                break;
+                FLEXSPI_INTR = FLEXSPI_INTR_IPTXWE; /* 워터마크 또는 마지막 워드마다 push */
             }
         }
     }

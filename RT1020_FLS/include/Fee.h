@@ -20,6 +20,7 @@ extern const uint16_t            Fee_NumBlocks;
 
 void                Fee_Init(void);
 Std_ReturnType      Fee_Read(uint16_t BlockNumber, uint16_t Offset, uint8_t *Buf, uint16_t Length);
+Std_ReturnType      Fee_Write(uint16_t BlockNumber, const uint8_t *Buf);
 void                Fee_MainFunction(void);
 MemIf_StatusType    Fee_GetStatus(void);
 MemIf_JobResultType Fee_GetJobResult(void);
@@ -30,10 +31,12 @@ MemIf_JobResultType Fee_GetJobResult(void);
 
 #define FEE_SID_INIT           0x00u
 #define FEE_SID_READ           0x02u
+#define FEE_SID_WRITE          0x03u
 
 #define FEE_E_UNINIT           0x01u  /* 초기화 전에 호출했다 */
 #define FEE_E_INVALID_BLOCK    0x02u  /* config 에 없는 블록 번호다 */
 #define FEE_E_PARAM_POINTER    0x03u  /* 버퍼 포인터가 NULL 이다 */
 #define FEE_E_INVALID_LENGTH   0x04u  /* offset+length 가 블록 크기를 넘는다 */
+#define FEE_E_BUSY             0x05u  /* 이미 job 이 진행 중인데 새 요청이 왔다 */
 
 #endif /* FEE_H */

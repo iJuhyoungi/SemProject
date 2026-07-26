@@ -368,31 +368,81 @@ static void report_fls_facade(void)
     print_ret("[FLS]   Fls_Erase(0x0):", r); /* 기대: E_NOT_OK 와 [DET] 로그 */
 }
 
+/* Fee job 이 끝날 때까지 Fee_MainFunction 과 Fls_MainFunction 을 함께 돌린다.
+ * 실제 시스템에서는 스케줄러가 두 MainFunction 을 주기적으로 부른다. */
+static MemIf_JobResultType fee_wait_job(void)
+{
+    while (Fee_GetJobResult() == MEMIF_JOB_PENDING)
+    {
+        Fee_MainFunction();
+        Fls_MainFunction();
+    }
+    return Fee_GetJobResult();
+}
+
 static void report_fee(void)
 {
-    uint8_t        buf[8];
-    Std_ReturnType r;
+    uint8_t        a[8]  = { 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xA7, 0xA8 };
+    uint8_t        b[8]  = { 0xB1, 0xB2, 0xB3, 0xB4, 0xB5, 0xB6, 0xB7, 0xB8 };
+    uint8_t        c[16] = { 0xC0, 0xC1, 0xC2, 0xC3, 0xC4, 0xC5, 0xC6, 0xC7,
+                             0xC8, 0xC9, 0xCA, 0xCB, 0xCC, 0xCD, 0xCE, 0xCF };
+    uint8_t        r[16];
+    Std_ReturnType s;
+    uint32_t       i;
+    uint32_t       ok;
 
-    UART1_SendString("[FEE] === F-6a Fee init/scan (빈 flash) ===\r\n");
-
-    /* 결정적 테스트를 위해 두 뱅크 헤더 섹터를 지워 '빈 Fee 영역' 을 만든다. */
-    Fls_Erase(0x00780000u, 4096u);
-    (void)fls_wait_job();
-    Fls_Erase(0x00788000u, 4096u);
-    (void)fls_wait_job();
-
+    UART1_SendString("[FEE] === F-6b Fee write/read/persist ===\r\n");
+    Fls_Init(&Fls_Config); /* Fee 는 Fls 를 아래 계층으로 쓰므로 먼저 초기화한다 */
     Fee_Init();
-    UART1_SendString((Fee_GetStatus() == MEMIF_IDLE)
-                         ? "[FEE]   Fee_Init : MEMIF_IDLE\r\n"
-                         : "[FEE]   Fee_Init : FAILED\r\n");
 
-    /* 빈 flash 라 블록 1 은 아직 없다 → E_NOT_OK 여야 한다. */
-    r = Fee_Read(1u, 0u, buf, 8u);
-    print_ret("[FEE]   Fee_Read(blk1, 빈상태):", r);
+    /* 1) 지속성: 쓰기 전에 block1 을 읽어 지난 실행에서 남긴 값을 확인한다.
+     *    재플래시 없이 리셋만 하면, 지난 부팅에서 쓴 값이 그대로 나와야 한다. */
+    s = Fee_Read(1u, 0u, r, 8u);
+    if (s == E_OK)
+    {
+        dump8("[FEE]   persisted blk1:", r);
+    }
+    else
+    {
+        UART1_SendString("[FEE]   persisted blk1: (없음, 첫 실행)\r\n");
+    }
 
-    /* config 에 없는 블록 99 → E_NOT_OK 와 [DET] INVALID_BLOCK. */
-    r = Fee_Read(99u, 0u, buf, 8u);
-    print_ret("[FEE]   Fee_Read(blk99, 없음) :", r);
+    /* 2) block1 = a 를 쓰고 읽어 왕복을 확인한다. */
+    s = Fee_Write(1u, a);
+    print_ret("[FEE]   Fee_Write(blk1,a):", s);
+    (void)fee_wait_job();
+    (void)Fee_Read(1u, 0u, r, 8u);
+    ok = 1u;
+    for (i = 0u; i < 8u; i++)
+    {
+        if (r[i] != a[i]) { ok = 0u; }
+    }
+    UART1_SendString(ok ? "[FEE]   write/read blk1 : OK\r\n"
+                        : "[FEE]   write/read blk1 : MISMATCH\r\n");
+
+    /* 3) latest-wins: 같은 block1 을 b 로 다시 쓰면, 읽었을 때 최신값 b 가 나와야 한다. */
+    (void)Fee_Write(1u, b);
+    (void)fee_wait_job();
+    (void)Fee_Read(1u, 0u, r, 8u);
+    ok = 1u;
+    for (i = 0u; i < 8u; i++)
+    {
+        if (r[i] != b[i]) { ok = 0u; }
+    }
+    UART1_SendString(ok ? "[FEE]   latest-wins blk1: OK (b)\r\n"
+                        : "[FEE]   latest-wins blk1: FAIL\r\n");
+
+    /* 4) block2 = c (16B) 왕복. */
+    (void)Fee_Write(2u, c);
+    (void)fee_wait_job();
+    (void)Fee_Read(2u, 0u, r, 16u);
+    ok = 1u;
+    for (i = 0u; i < 16u; i++)
+    {
+        if (r[i] != c[i]) { ok = 0u; }
+    }
+    UART1_SendString(ok ? "[FEE]   write/read blk2 : OK\r\n"
+                        : "[FEE]   write/read blk2 : MISMATCH\r\n");
 }
 
 int main(void)

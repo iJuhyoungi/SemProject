@@ -7,5 +7,5 @@ const Fls_ConfigType Fls_Config =
     .totalSize     = 0x00100000u,
     .sectorSize    = 4096u,
     .pageSize      = 256u,
-    .maxWriteChunk = 32u,           /* FLS_IP_READ_MAX 와 동일 (한 번의 TX FIFO 채움) */
+    .maxWriteChunk = 8u,            /* TX FIFO 워터마크(8B) 단위. 더 큰 write 는 이 크기로 쪼개 프로그램한다 */
 };

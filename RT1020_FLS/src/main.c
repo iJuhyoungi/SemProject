@@ -382,67 +382,76 @@ static MemIf_JobResultType fee_wait_job(void)
 
 static void report_fee(void)
 {
-    uint8_t        a[8]  = { 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xA7, 0xA8 };
-    uint8_t        b[8]  = { 0xB1, 0xB2, 0xB3, 0xB4, 0xB5, 0xB6, 0xB7, 0xB8 };
-    uint8_t        c[16] = { 0xC0, 0xC1, 0xC2, 0xC3, 0xC4, 0xC5, 0xC6, 0xC7,
-                             0xC8, 0xC9, 0xCA, 0xCB, 0xCC, 0xCD, 0xCE, 0xCF };
+    uint8_t        buf[8];
     uint8_t        r[16];
     Std_ReturnType s;
     uint32_t       i;
     uint32_t       ok;
+    uint32_t       seqBefore;
+    uint32_t       seqAfter;
+    const uint32_t kWrites = 230u; /* 4KB 뱅크(≈204 인스턴스)를 넘겨 GC 를 확실히 발동시킨다 */
 
-    UART1_SendString("[FEE] === F-6b Fee write/read/persist ===\r\n");
+    UART1_SendString("[FEE] === F-6c Fee GC / wear-leveling / invalidate ===\r\n");
     Fls_Init(&Fls_Config); /* Fee 는 Fls 를 아래 계층으로 쓰므로 먼저 초기화한다 */
     Fee_Init();
 
-    /* 1) 지속성: 쓰기 전에 block1 을 읽어 지난 실행에서 남긴 값을 확인한다.
-     *    재플래시 없이 리셋만 하면, 지난 부팅에서 쓴 값이 그대로 나와야 한다. */
+    seqBefore = Fee_Dbg_ActiveSeq();
+    UART1_SendString("[FEE]   active bank=");
+    UART1_SendHex32(Fee_Dbg_ActiveBank());
+    UART1_SendString(" seqNo=");
+    UART1_SendHex32(seqBefore);
+    UART1_SendString("\r\n");
+
+    /* 1) block1 을 값(= 반복 인덱스)만 바꿔 가며 여러 번 쓴다. 4KB 뱅크가 꽉 차면
+     *    Fee 가 스스로 예비 뱅크로 GC(뱅크 전환)를 수행한다. 매 write 마다 인쇄하면
+     *    시리얼이 넘치므로 50회마다 진행 상황만 찍는다. */
+    for (i = 0u; i < kWrites; i++)
+    {
+        uint32_t b;
+        for (b = 0u; b < 8u; b++)
+        {
+            buf[b] = (uint8_t)i; /* 8바이트 모두 반복 인덱스로 채워, 나중에 최신값을 검증 */
+        }
+        (void)Fee_Write(1u, buf);
+        (void)fee_wait_job();
+
+        if (((i + 1u) % 50u) == 0u)
+        {
+            UART1_SendString("[FEE]   writes=");
+            UART1_SendHex32(i + 1u);
+            UART1_SendString(" seqNo=");
+            UART1_SendHex32(Fee_Dbg_ActiveSeq());
+            UART1_SendString("\r\n");
+        }
+    }
+
+    seqAfter = Fee_Dbg_ActiveSeq();
+    UART1_SendString(seqAfter > seqBefore ? "[FEE]   GC occurred (bank switched) : OK\r\n"
+                                          : "[FEE]   GC did NOT occur : FAIL\r\n");
+    UART1_SendString("[FEE]   active bank=");
+    UART1_SendHex32(Fee_Dbg_ActiveBank());
+    UART1_SendString(" seqNo=");
+    UART1_SendHex32(seqAfter);
+    UART1_SendString("\r\n");
+
+    /* 2) GC 후에도 최신값이 살아남는지 확인한다. 마지막으로 쓴 값은 (kWrites-1). */
+    (void)Fee_Read(1u, 0u, r, 8u);
+    ok = 1u;
+    for (i = 0u; i < 8u; i++)
+    {
+        if (r[i] != (uint8_t)(kWrites - 1u)) { ok = 0u; }
+    }
+    UART1_SendString("[FEE]   latest blk1 after GC = ");
+    UART1_SendHex32(r[0]);
+    UART1_SendString(ok ? "  (survived GC : OK)\r\n" : "  (FAIL)\r\n");
+
+    /* 3) 무효화: block1 을 무효화하면 이후 Fee_Read 는 '없음'(E_NOT_OK)을 돌려줘야 한다. */
+    s = Fee_InvalidateBlock(1u);
+    print_ret("[FEE]   Fee_InvalidateBlock(1):", s);
+    (void)fee_wait_job();
     s = Fee_Read(1u, 0u, r, 8u);
-    if (s == E_OK)
-    {
-        dump8("[FEE]   persisted blk1:", r);
-    }
-    else
-    {
-        UART1_SendString("[FEE]   persisted blk1: (없음, 첫 실행)\r\n");
-    }
-
-    /* 2) block1 = a 를 쓰고 읽어 왕복을 확인한다. */
-    s = Fee_Write(1u, a);
-    print_ret("[FEE]   Fee_Write(blk1,a):", s);
-    (void)fee_wait_job();
-    (void)Fee_Read(1u, 0u, r, 8u);
-    ok = 1u;
-    for (i = 0u; i < 8u; i++)
-    {
-        if (r[i] != a[i]) { ok = 0u; }
-    }
-    UART1_SendString(ok ? "[FEE]   write/read blk1 : OK\r\n"
-                        : "[FEE]   write/read blk1 : MISMATCH\r\n");
-
-    /* 3) latest-wins: 같은 block1 을 b 로 다시 쓰면, 읽었을 때 최신값 b 가 나와야 한다. */
-    (void)Fee_Write(1u, b);
-    (void)fee_wait_job();
-    (void)Fee_Read(1u, 0u, r, 8u);
-    ok = 1u;
-    for (i = 0u; i < 8u; i++)
-    {
-        if (r[i] != b[i]) { ok = 0u; }
-    }
-    UART1_SendString(ok ? "[FEE]   latest-wins blk1: OK (b)\r\n"
-                        : "[FEE]   latest-wins blk1: FAIL\r\n");
-
-    /* 4) block2 = c (16B) 왕복. */
-    (void)Fee_Write(2u, c);
-    (void)fee_wait_job();
-    (void)Fee_Read(2u, 0u, r, 16u);
-    ok = 1u;
-    for (i = 0u; i < 16u; i++)
-    {
-        if (r[i] != c[i]) { ok = 0u; }
-    }
-    UART1_SendString(ok ? "[FEE]   write/read blk2 : OK\r\n"
-                        : "[FEE]   write/read blk2 : MISMATCH\r\n");
+    UART1_SendString(s == E_NOT_OK ? "[FEE]   read after invalidate: not-found : OK\r\n"
+                                   : "[FEE]   read after invalidate: STILL READABLE : FAIL\r\n");
 }
 
 int main(void)
@@ -466,7 +475,7 @@ int main(void)
     /* F-5: MCAL Fls facade 를 비동기 job 모델로 시험한다. */
     report_fls_facade();
 
-    /* F-6a: Fee 레이아웃 스캔 (빈 flash 에서 '블록 없음' 판정 확인). */
+    /* F-6c: Fee 의 GC(뱅크 전환)·wear-leveling·무효화를 시험한다. */
     report_fee();
 
     uint32_t beat = 0;

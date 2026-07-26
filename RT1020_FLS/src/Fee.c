@@ -6,30 +6,27 @@
 
 /* ================= on-flash 레이아웃 =================
  * Fee 영역은 Fls 허용 영역(0x700000~0x800000) 안의 두 뱅크로 구성된다.
- * F-4/F-5 실험 섹터(0x7FF000)와 겹치지 않도록 앞쪽에 배치했다. */
+ * 뱅크를 1섹터(4KB)로 잡아, 반복 write 로 GC(뱅크 전환)가 빨리 발동하도록 했다. */
 #define FEE_BANK_A_BASE 0x00780000u
-#define FEE_BANK_B_BASE 0x00788000u
-#define FEE_BANK_SIZE   0x00008000u /* 32KB = 8 sector */
+#define FEE_BANK_B_BASE 0x00781000u
+#define FEE_BANK_SIZE   0x00001000u /* 4KB = 1 sector */
 
 #define FEE_BANK_MAGIC  0x31454546u /* 바이트로 'F','E','E','1' (LE) */
 #define FEE_ERASED16    0xFFFFu
 #define FEE_ERASED32    0xFFFFFFFFu
-#define FEE_WRITE_DONE  0x00000000u /* 완료 커밋 마커 값 */
+#define FEE_WRITE_DONE  0x00000000u /* writeState: 유효 데이터 커밋 */
+#define FEE_WRITE_INVAL 0xFFFF0000u /* writeState: 이 블록 무효화 (erased 에서 1->0 로 프로그램 가능) */
 
-#define FEE_BANK_HDR_SIZE 8u  /* sizeof(Fee_BankHeader) */
-#define FEE_INST_HDR_SIZE 12u /* sizeof(Fee_InstHeader) */
+#define FEE_BANK_HDR_SIZE 8u
+#define FEE_INST_HDR_SIZE 12u
 #define FEE_MAX_DATA      16u /* config 의 가장 큰 블록 크기 */
 
-/* 뱅크 맨 앞에 놓이는 헤더. magic 으로 유효성을, seqNo 로 최신 활성 뱅크를 가린다. */
 typedef struct
 {
     uint32_t magic;
     uint32_t seqNo;
 } Fee_BankHeader;
 
-/* 블록 인스턴스 헤더. 뒤에 length 바이트의 데이터가 이어진다.
- * writeState 는 데이터까지 다 쓴 뒤 "맨 마지막"에 기록하는 완료 마커다.
- * 쓰다가 전원이 나가면 writeState 가 erased(0xFFFFFFFF)로 남아 무효 판정된다. */
 typedef struct
 {
     uint16_t blockNumber;
@@ -38,41 +35,57 @@ typedef struct
     uint32_t writeState;
 } Fee_InstHeader;
 
-/* 비동기 write 를 몇 단계로 나눠 진행한다 (각 단계는 Fls 작업 하나). */
+/* write / GC 진행 단계 (각 단계는 Fls 작업 하나) */
 typedef enum
 {
     W_IDLE = 0,
-    W_FMT_ERASE,  /* (활성 뱅크 없을 때) 뱅크 전체 erase */
-    W_FMT_HEADER, /* 뱅크 헤더(magic/seqNo) 기록 */
-    W_INST,       /* 인스턴스 헤더+데이터 기록 (writeState 는 미완료) */
-    W_MARKER,     /* writeState 완료 마커를 맨 마지막에 기록 */
-    W_FINISH      /* RAM 인덱스 갱신, 완료 */
+    W_FMT_ERASE,  /* (활성 뱅크 없을 때) 뱅크 erase */
+    W_FMT_HEADER, /* 뱅크 헤더 기록 */
+    W_INST,       /* 인스턴스 헤더+데이터 기록 */
+    W_MARKER,     /* writeState 마커 기록 (완료 또는 무효) */
+    W_FINISH,     /* 일반 write 마무리 */
+    W_GC_ERASE,   /* GC: 예비 뱅크 erase */
+    W_GC_HEADER,  /* GC: 예비 뱅크 헤더(seqNo+1) 기록 */
+    W_GC_STEP,    /* GC: 다음에 복사할 블록을 골라 인스턴스 write 를 발주 */
+    W_GC_FINISH   /* GC: 활성 뱅크를 예비로 전환 */
 } Fee_WStep;
 
-/* ================= 드라이버 상태 ================= */
 static struct
 {
     MemIf_StatusType    status;
     MemIf_JobResultType result;
-    uint32_t            activeBank; /* FEE_BANK_A_BASE / B / 0(유효 뱅크 없음) */
+    uint32_t            activeBank; /* FEE_BANK_A_BASE / B / 0 */
     uint32_t            activeSeq;
-    uint32_t            writePtr;              /* 활성 뱅크의 다음 append 위치 */
-    uint32_t            index[FEE_MAX_BLOCKS]; /* 블록별 최신 유효 인스턴스 헤더 오프셋. 0 = 없음 */
+    uint32_t            writePtr;
+    uint32_t            index[FEE_MAX_BLOCKS]; /* 블록별 최신 유효 인스턴스 오프셋. 0 = 없음/무효 */
 
-    /* --- write job 진행 상태 --- */
+    /* --- job 진행 상태 --- */
     Fee_WStep wstep;
-    uint8_t   flsIssued; /* 1 = Fls 작업을 발주하고 완료를 기다리는 중 */
-    int16_t   pos;       /* 쓰는 블록의 config 위치 */
-    uint32_t  instOff;   /* 이번 인스턴스가 놓일 오프셋 */
+    uint8_t   flsIssued;
+    uint8_t   gcMode;   /* 1 = GC 진행 중 */
+    int16_t   pos;      /* 지금 쓰는 인스턴스의 블록 위치 */
+    uint8_t   curInval; /* 지금 쓰는 인스턴스가 무효화인가 */
+    uint32_t  instOff;
+    uint32_t  instSize; /* 정렬된 인스턴스 크기 */
     uint32_t  targetBank;
     uint32_t  newSeq;
     uint8_t   bankHdr[FEE_BANK_HDR_SIZE];
-    uint8_t   stage[FEE_INST_HDR_SIZE + FEE_MAX_DATA]; /* 인스턴스(헤더+데이터) 스테이징. RAM */
+    uint8_t   stage[FEE_INST_HDR_SIZE + FEE_MAX_DATA];
     uint16_t  stageLen;
     uint8_t   marker[4];
-} g_fee = {0}; /* status 가 0 = MEMIF_UNINIT 로 시작한다 */
 
-/* --- 리틀엔디안 바이트 패킹 헬퍼 (struct 정렬 문제를 피하려 직접 조립한다) --- */
+    /* --- 요청(pending) 보존: GC 로 넘어가도 새 데이터를 유지 --- */
+    int16_t pendPos;
+    uint8_t pendInval;
+    uint8_t pendData[FEE_MAX_DATA];
+
+    /* --- GC 진행 --- */
+    uint16_t gcCursor;
+    uint32_t gcWritePtr;
+    uint32_t gcNewIndex[FEE_MAX_BLOCKS];
+    uint8_t  gcReadBuf[FEE_MAX_DATA];
+} g_fee = {0};
+
 static void put16(uint8_t *p, uint16_t v)
 {
     p[0] = (uint8_t)v;
@@ -86,7 +99,6 @@ static void put32(uint8_t *p, uint32_t v)
     p[3] = (uint8_t)(v >> 24);
 }
 
-/* config 배열에서 이 블록 번호의 위치를 찾는다. 없으면 -1. */
 static int16_t find_block_pos(uint16_t blockNumber)
 {
     uint16_t i;
@@ -100,8 +112,36 @@ static int16_t find_block_pos(uint16_t blockNumber)
     return -1;
 }
 
-/* 활성 뱅크를 append 순서대로 훑으며, 각 블록의 최신 유효 인스턴스를 index 에 기록하고
- * 다음 쓰기 위치(writePtr)를 찾는다. 앞으로 진행하므로 나중에 만난 것이 최신이다. */
+/* stage 버퍼에 블록 pos 의 인스턴스를 조립한다.
+ * withData=1 이면 헤더+데이터, 0 이면 헤더만(무효화 tombstone). */
+static void stage_header(int16_t pos, const uint8_t *data, uint8_t withData)
+{
+    uint16_t sz = Fee_BlockConfig[pos].blockSize;
+    uint16_t i;
+    uint32_t crc = withData ? CRC32_Compute(data, (uint32_t)sz) : 0u;
+
+    put16(&g_fee.stage[0], Fee_BlockConfig[pos].blockNumber);
+    put16(&g_fee.stage[2], sz);
+    put32(&g_fee.stage[4], crc);
+    put32(&g_fee.stage[8], FEE_ERASED32); /* writeState 는 마커 단계에서 확정한다 */
+
+    if (withData != 0u)
+    {
+        for (i = 0u; i < sz; i++)
+        {
+            g_fee.stage[FEE_INST_HDR_SIZE + i] = data[i];
+        }
+        g_fee.stageLen = (uint16_t)(FEE_INST_HDR_SIZE + sz);
+    }
+    else
+    {
+        g_fee.stageLen = FEE_INST_HDR_SIZE; /* 무효화는 데이터 없이 헤더만 쓴다 */
+    }
+
+    /* writePtr 전진용 크기는 데이터 유무와 무관하게 헤더+블록크기(정렬)로 예약한다. */
+    g_fee.instSize = ((uint32_t)FEE_INST_HDR_SIZE + sz + 3u) & ~3u;
+}
+
 static void scan_bank(uint32_t bankBase)
 {
     uint32_t       off     = bankBase + FEE_BANK_HDR_SIZE;
@@ -121,20 +161,26 @@ static void scan_bank(uint32_t bankBase)
 
         {
             int16_t pos = find_block_pos(ih.blockNumber);
-            if ((pos >= 0) &&
-                (ih.writeState == FEE_WRITE_DONE) &&
-                (ih.length == Fee_BlockConfig[pos].blockSize))
+            if ((pos >= 0) && (ih.length == Fee_BlockConfig[pos].blockSize))
             {
-                g_fee.index[pos] = off; /* 유효한 최신본으로 갱신 */
+                if (ih.writeState == FEE_WRITE_DONE)
+                {
+                    g_fee.index[pos] = off; /* 유효 최신본 */
+                }
+                else if (ih.writeState == FEE_WRITE_INVAL)
+                {
+                    g_fee.index[pos] = 0u;  /* 무효화 (나중 것이 이기므로 앞의 유효본을 덮는다) */
+                }
+                /* 그 밖(0xFFFFFFFF 등)은 torn write → 무시 */
             }
         }
 
         {
             uint32_t instSize = FEE_INST_HDR_SIZE + ih.length;
-            instSize = (instSize + 3u) & ~3u; /* 4바이트 정렬 */
+            instSize = (instSize + 3u) & ~3u;
             if (instSize <= (FEE_INST_HDR_SIZE - 1u))
             {
-                break; /* 방어: length 가 비정상이면 중단 */
+                break;
             }
             off += instSize;
         }
@@ -160,6 +206,7 @@ void Fee_Init(void)
     g_fee.writePtr   = 0u;
     g_fee.wstep      = W_IDLE;
     g_fee.flsIssued  = 0u;
+    g_fee.gcMode     = 0u;
 
     (void)FlexSPI_ReadData(FEE_BANK_A_BASE, (uint8_t *)&ha, FEE_BANK_HDR_SIZE);
     (void)FlexSPI_ReadData(FEE_BANK_B_BASE, (uint8_t *)&hb, FEE_BANK_HDR_SIZE);
@@ -167,7 +214,6 @@ void Fee_Init(void)
     aValid = (uint8_t)(ha.magic == FEE_BANK_MAGIC);
     bValid = (uint8_t)(hb.magic == FEE_BANK_MAGIC);
 
-    /* magic 이 유효한 뱅크 중 seqNo 가 큰 쪽이 활성이다. */
     if (aValid && ((bValid == 0u) || (ha.seqNo >= hb.seqNo)))
     {
         g_fee.activeBank = FEE_BANK_A_BASE;
@@ -180,7 +226,7 @@ void Fee_Init(void)
     }
     else
     {
-        g_fee.activeBank = 0u; /* 유효 뱅크 없음 = 빈 flash */
+        g_fee.activeBank = 0u;
     }
 
     if (g_fee.activeBank != 0u)
@@ -206,7 +252,6 @@ Std_ReturnType Fee_Read(uint16_t BlockNumber, uint16_t Offset, uint8_t *Buf, uin
         Det_ReportError(FEE_MODULE_ID, FEE_INSTANCE_ID, FEE_SID_READ, FEE_E_PARAM_POINTER);
         return E_NOT_OK;
     }
-
     pos = find_block_pos(BlockNumber);
     if (pos < 0)
     {
@@ -218,12 +263,10 @@ Std_ReturnType Fee_Read(uint16_t BlockNumber, uint16_t Offset, uint8_t *Buf, uin
         Det_ReportError(FEE_MODULE_ID, FEE_INSTANCE_ID, FEE_SID_READ, FEE_E_INVALID_LENGTH);
         return E_NOT_OK;
     }
-
     if (g_fee.index[pos] == 0u)
     {
-        return E_NOT_OK; /* 아직 한 번도 쓰인 적 없는 블록이다 */
+        return E_NOT_OK; /* 미기록 또는 무효화된 블록 */
     }
-
     if (FlexSPI_ReadData(g_fee.index[pos] + FEE_INST_HDR_SIZE + Offset, Buf, Length) != FLS_IP_OK)
     {
         return E_NOT_OK;
@@ -231,13 +274,51 @@ Std_ReturnType Fee_Read(uint16_t BlockNumber, uint16_t Offset, uint8_t *Buf, uin
     return E_OK;
 }
 
+/* pendPos/pendInval/pendData 를 채운 뒤 호출한다. 포맷/일반append/GC 중 무엇으로 갈지 결정한다. */
+static void start_job(void)
+{
+    put32(&g_fee.marker[0], (g_fee.pendInval != 0u) ? FEE_WRITE_INVAL : FEE_WRITE_DONE);
+    stage_header(g_fee.pendPos, g_fee.pendData, (uint8_t)(g_fee.pendInval == 0u));
+    g_fee.pos      = g_fee.pendPos;
+    g_fee.curInval = g_fee.pendInval;
+    g_fee.gcMode   = 0u;
+
+    if (g_fee.activeBank == 0u)
+    {
+        /* 유효 뱅크 없음 → Bank A 포맷 후 append */
+        g_fee.targetBank = FEE_BANK_A_BASE;
+        g_fee.newSeq     = g_fee.activeSeq + 1u;
+        put32(&g_fee.bankHdr[0], FEE_BANK_MAGIC);
+        put32(&g_fee.bankHdr[4], g_fee.newSeq);
+        g_fee.wstep = W_FMT_ERASE;
+    }
+    else if ((g_fee.writePtr + g_fee.instSize) <= (g_fee.activeBank + FEE_BANK_SIZE))
+    {
+        /* 활성 뱅크에 공간이 있다 → 그냥 append */
+        g_fee.instOff = g_fee.writePtr;
+        g_fee.wstep   = W_INST;
+    }
+    else
+    {
+        /* 뱅크가 꽉 찼다 → GC: 예비 뱅크로 옮긴다 */
+        g_fee.targetBank = (g_fee.activeBank == FEE_BANK_A_BASE) ? FEE_BANK_B_BASE : FEE_BANK_A_BASE;
+        g_fee.newSeq     = g_fee.activeSeq + 1u;
+        put32(&g_fee.bankHdr[0], FEE_BANK_MAGIC);
+        put32(&g_fee.bankHdr[4], g_fee.newSeq);
+        g_fee.gcMode = 1u;
+        g_fee.wstep  = W_GC_ERASE;
+    }
+
+    g_fee.flsIssued = 0u;
+    g_fee.status    = MEMIF_BUSY;
+    g_fee.result    = MEMIF_JOB_PENDING;
+}
+
 Std_ReturnType Fee_Write(uint16_t BlockNumber, const uint8_t *Buf)
 {
     int16_t  pos;
     uint16_t sz;
     uint16_t i;
-    uint32_t crc;
-    uint32_t instSize;
 
     if (g_fee.status == MEMIF_UNINIT)
     {
@@ -261,75 +342,66 @@ Std_ReturnType Fee_Write(uint16_t BlockNumber, const uint8_t *Buf)
         return E_NOT_OK;
     }
 
-    sz  = Fee_BlockConfig[pos].blockSize;
-    crc = CRC32_Compute(Buf, (uint32_t)sz);
-
-    /* 인스턴스(헤더+데이터)를 RAM 스테이징 버퍼에 조립한다.
-     * writeState 자리는 미완료(0xFFFFFFFF)로 두고, 완료 마커는 맨 마지막 단계에서 쓴다. */
-    put16(&g_fee.stage[0], BlockNumber);
-    put16(&g_fee.stage[2], sz);
-    put32(&g_fee.stage[4], crc);
-    put32(&g_fee.stage[8], FEE_ERASED32);
+    sz = Fee_BlockConfig[pos].blockSize;
     for (i = 0u; i < sz; i++)
     {
-        g_fee.stage[FEE_INST_HDR_SIZE + i] = Buf[i];
+        g_fee.pendData[i] = Buf[i];
     }
-    g_fee.stageLen = (uint16_t)(FEE_INST_HDR_SIZE + sz);
-    put32(&g_fee.marker[0], FEE_WRITE_DONE);
-
-    instSize = ((uint32_t)FEE_INST_HDR_SIZE + sz + 3u) & ~3u;
-
-    g_fee.pos = pos;
-
-    if (g_fee.activeBank == 0u)
-    {
-        /* 유효 뱅크가 없다 → 첫 write 이므로 Bank A 를 포맷하고 시작한다. */
-        g_fee.targetBank = FEE_BANK_A_BASE;
-        g_fee.newSeq     = g_fee.activeSeq + 1u; /* 0 -> 1 */
-        put32(&g_fee.bankHdr[0], FEE_BANK_MAGIC);
-        put32(&g_fee.bankHdr[4], g_fee.newSeq);
-        g_fee.wstep = W_FMT_ERASE;
-    }
-    else
-    {
-        /* 활성 뱅크에 공간이 남아 있는지 확인한다. */
-        if ((g_fee.writePtr + instSize) > (g_fee.activeBank + FEE_BANK_SIZE))
-        {
-            /* 뱅크가 꽉 찼다. F-6c 에서 GC(뱅크 전환)로 처리한다. 지금은 거부한다. */
-            return E_NOT_OK;
-        }
-        g_fee.instOff = g_fee.writePtr;
-        g_fee.wstep   = W_INST;
-    }
-
-    g_fee.flsIssued = 0u;
-    g_fee.status    = MEMIF_BUSY;
-    g_fee.result    = MEMIF_JOB_PENDING;
+    g_fee.pendPos   = pos;
+    g_fee.pendInval = 0u;
+    start_job();
     return E_OK;
 }
 
-/* 한 번 호출될 때마다 write 상태 머신을 한 걸음 전진시킨다.
- * 각 단계는 Fls 작업 하나를 발주하고, 그 Fls job 이 끝나면 다음 단계로 넘어간다.
- * (스케줄러가 Fee_MainFunction 과 Fls_MainFunction 을 함께 주기적으로 부른다.) */
+Std_ReturnType Fee_InvalidateBlock(uint16_t BlockNumber)
+{
+    int16_t pos;
+
+    if (g_fee.status == MEMIF_UNINIT)
+    {
+        Det_ReportError(FEE_MODULE_ID, FEE_INSTANCE_ID, FEE_SID_INVALIDATE, FEE_E_UNINIT);
+        return E_NOT_OK;
+    }
+    if (g_fee.status == MEMIF_BUSY)
+    {
+        Det_ReportError(FEE_MODULE_ID, FEE_INSTANCE_ID, FEE_SID_INVALIDATE, FEE_E_BUSY);
+        return E_NOT_OK;
+    }
+    pos = find_block_pos(BlockNumber);
+    if (pos < 0)
+    {
+        Det_ReportError(FEE_MODULE_ID, FEE_INSTANCE_ID, FEE_SID_INVALIDATE, FEE_E_INVALID_BLOCK);
+        return E_NOT_OK;
+    }
+
+    g_fee.pendPos   = pos;
+    g_fee.pendInval = 1u;
+    start_job();
+    return E_OK;
+}
+
 void Fee_MainFunction(void)
 {
+    uint16_t i;
+
     if (g_fee.status != MEMIF_BUSY)
     {
         return;
     }
 
-    /* 앞 단계에서 발주한 Fls 작업이 끝났는지 확인하고, 끝났으면 다음 단계로 넘어간다. */
+    /* 발주한 Fls 작업이 끝났으면 다음 단계로 넘어간다. */
     if (g_fee.flsIssued != 0u)
     {
         MemIf_JobResultType fr = Fls_GetJobResult();
         if (fr == MEMIF_JOB_PENDING)
         {
-            return; /* 아래 Fls 가 아직 작업 중이다 */
+            return;
         }
         g_fee.flsIssued = 0u;
         if (fr != MEMIF_JOB_OK)
         {
             g_fee.wstep  = W_IDLE;
+            g_fee.gcMode = 0u;
             g_fee.status = MEMIF_IDLE;
             g_fee.result = MEMIF_JOB_FAILED;
             return;
@@ -351,22 +423,45 @@ void Fee_MainFunction(void)
             g_fee.wstep = W_MARKER;
             break;
         case W_MARKER:
-            g_fee.wstep = W_FINISH;
+            if (g_fee.gcMode != 0u)
+            {
+                /* GC 복사 한 건 완료 → 다음 블록으로 */
+                g_fee.gcWritePtr = g_fee.instOff + g_fee.instSize;
+                g_fee.wstep      = W_GC_STEP;
+            }
+            else
+            {
+                g_fee.wstep = W_FINISH;
+            }
+            break;
+        case W_GC_ERASE:
+            g_fee.wstep = W_GC_HEADER;
+            break;
+        case W_GC_HEADER:
+            g_fee.gcWritePtr = g_fee.targetBank + FEE_BANK_HDR_SIZE;
+            g_fee.gcCursor   = 0u;
+            for (i = 0u; i < FEE_MAX_BLOCKS; i++)
+            {
+                g_fee.gcNewIndex[i] = 0u;
+            }
+            g_fee.wstep = W_GC_STEP;
             break;
         default:
             break;
         }
     }
 
-    /* 현재 단계의 작업을 발주한다. */
+    /* 현재 단계 발주 */
     switch (g_fee.wstep)
     {
     case W_FMT_ERASE:
+    case W_GC_ERASE:
         (void)Fls_Erase(g_fee.targetBank, FEE_BANK_SIZE);
         g_fee.flsIssued = 1u;
         break;
 
     case W_FMT_HEADER:
+    case W_GC_HEADER:
         (void)Fls_Write(g_fee.targetBank, g_fee.bankHdr, FEE_BANK_HDR_SIZE);
         g_fee.flsIssued = 1u;
         break;
@@ -377,21 +472,78 @@ void Fee_MainFunction(void)
         break;
 
     case W_MARKER:
-        /* writeState 필드(인스턴스 오프셋 +8)를 완료값으로 덮어써 커밋한다. */
         (void)Fls_Write(g_fee.instOff + 8u, g_fee.marker, 4u);
         g_fee.flsIssued = 1u;
         break;
 
     case W_FINISH:
-    {
-        uint32_t instSize = ((uint32_t)FEE_INST_HDR_SIZE + Fee_BlockConfig[g_fee.pos].blockSize + 3u) & ~3u;
-        g_fee.index[g_fee.pos] = g_fee.instOff; /* 이제부터 이 블록의 최신본은 이 인스턴스다 */
-        g_fee.writePtr         = g_fee.instOff + instSize;
+        g_fee.index[g_fee.pos] = (g_fee.curInval != 0u) ? 0u : g_fee.instOff;
+        g_fee.writePtr         = g_fee.instOff + g_fee.instSize;
         g_fee.wstep            = W_IDLE;
         g_fee.status           = MEMIF_IDLE;
         g_fee.result           = MEMIF_JOB_OK;
         break;
+
+    case W_GC_STEP:
+    {
+        /* 예비 뱅크로 복사할 다음 블록을 고른다. pending 블록은 새 데이터로, 나머지는
+         * 옛 뱅크의 최신본을 읽어 옮긴다. 무효화된(또는 무효화 요청) 블록은 버린다. */
+        uint8_t issued = 0u;
+        while (g_fee.gcCursor < Fee_NumBlocks)
+        {
+            int16_t p = (int16_t)g_fee.gcCursor;
+            g_fee.gcCursor++;
+
+            if (p == g_fee.pendPos)
+            {
+                if (g_fee.pendInval != 0u)
+                {
+                    continue; /* 무효화 요청 블록은 새 뱅크로 옮기지 않는다 (드롭) */
+                }
+                stage_header(p, g_fee.pendData, 1u);
+            }
+            else if (g_fee.index[p] != 0u)
+            {
+                uint16_t sz = Fee_BlockConfig[p].blockSize;
+                (void)FlexSPI_ReadData(g_fee.index[p] + FEE_INST_HDR_SIZE, g_fee.gcReadBuf, sz);
+                stage_header(p, g_fee.gcReadBuf, 1u);
+            }
+            else
+            {
+                continue; /* 유효 데이터 없음 → 건너뜀 */
+            }
+
+            put32(&g_fee.marker[0], FEE_WRITE_DONE);
+            g_fee.pos             = p;
+            g_fee.curInval        = 0u;
+            g_fee.instOff         = g_fee.gcWritePtr;
+            g_fee.gcNewIndex[p]   = g_fee.gcWritePtr;
+            g_fee.wstep           = W_INST;
+            (void)Fls_Write(g_fee.instOff, g_fee.stage, g_fee.stageLen);
+            g_fee.flsIssued = 1u;
+            issued          = 1u;
+            break;
+        }
+        if (issued == 0u)
+        {
+            g_fee.wstep = W_GC_FINISH; /* 다음 호출에서 마무리 */
+        }
+        break;
     }
+
+    case W_GC_FINISH:
+        g_fee.activeBank = g_fee.targetBank;
+        g_fee.activeSeq  = g_fee.newSeq;
+        for (i = 0u; i < FEE_MAX_BLOCKS; i++)
+        {
+            g_fee.index[i] = (i < Fee_NumBlocks) ? g_fee.gcNewIndex[i] : 0u;
+        }
+        g_fee.writePtr = g_fee.gcWritePtr;
+        g_fee.gcMode   = 0u;
+        g_fee.wstep    = W_IDLE;
+        g_fee.status   = MEMIF_IDLE;
+        g_fee.result   = MEMIF_JOB_OK;
+        break;
 
     default:
         break;
@@ -406,4 +558,14 @@ MemIf_StatusType Fee_GetStatus(void)
 MemIf_JobResultType Fee_GetJobResult(void)
 {
     return g_fee.result;
+}
+
+/* --- 데모/진단용 (AUTOSAR 표준 아님): 활성 뱅크와 seqNo 를 노출해 GC 발동을 관찰한다. --- */
+uint32_t Fee_Dbg_ActiveBank(void)
+{
+    return g_fee.activeBank;
+}
+uint32_t Fee_Dbg_ActiveSeq(void)
+{
+    return g_fee.activeSeq;
 }

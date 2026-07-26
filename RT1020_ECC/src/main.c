@@ -2,6 +2,7 @@
 #include "uart.h"
 #include "led.h"
 #include "Ecc.h"
+#include "Ecc72.h"
 
 /* busy-wait */
 static void delay_busy(volatile uint32_t n)
@@ -65,6 +66,79 @@ static void report_ecc_selftest(void)
     UART1_SendString(fail == 0u ? "\r\n[ECC]   ALL PASS\r\n" : "\r\n[ECC]   FAIL\r\n");
 }
 
+static void report_ecc72_selftest(void)
+{
+    uint32_t okClean = 0u;
+    uint32_t okCorr  = 0u;
+    uint32_t okDet   = 0u;
+    uint32_t fail    = 0u;
+    uint64_t seed    = 0x0123456789ABCDEFULL;
+    uint32_t t;
+    const uint32_t NTEST = 16u;
+
+    Ecc72_Init();
+    UART1_SendString("[ECC] === E-3 (72,64) Hsiao SECDED self-test ===\r\n");
+
+    for (t = 0u; t < NTEST; t++)
+    {
+        uint64_t D;
+        uint8_t  ecc;
+        uint8_t  i;
+        uint8_t  j;
+
+        /* 앞 4개는 고정 엣지 패턴, 나머지는 xorshift64 로 생성 (곱셈 없이 shift/XOR 만). */
+        if      (t == 0u) { D = 0ULL; }
+        else if (t == 1u) { D = ~0ULL; }
+        else if (t == 2u) { D = 0xAAAAAAAAAAAAAAAAULL; }
+        else if (t == 3u) { D = 0x5555555555555555ULL; }
+        else { seed ^= seed << 13; seed ^= seed >> 7; seed ^= seed << 17; D = seed; }
+
+        ecc = Ecc72_Encode(D);
+
+        /* ① 무오류 */
+        {
+            uint64_t d = D;
+            if ((Ecc72_Decode(&d, ecc) == ECC_NO_ERROR) && (d == D)) { okClean++; }
+            else { fail++; }
+        }
+
+        /* ② 단일비트 전수: 데이터 64 + ECC 8 = 72 위치 */
+        for (i = 0u; i < 64u; i++)
+        {
+            uint64_t d = D ^ ((uint64_t)1u << i);
+            if ((Ecc72_Decode(&d, ecc) == ECC_CORRECTED) && (d == D)) { okCorr++; }
+            else { fail++; }
+        }
+        for (i = 0u; i < 8u; i++)
+        {
+            uint64_t d = D;
+            uint8_t  e = (uint8_t)(ecc ^ (1u << i));
+            if ((Ecc72_Decode(&d, e) == ECC_CORRECTED) && (d == D)) { okCorr++; }
+            else { fail++; }
+        }
+
+        /* ③ 이중비트 전수: 72위치 중 2개. 전부 UNCORRECTABLE 이어야 한다. */
+        for (i = 0u; i < 72u; i++)
+        {
+            for (j = (uint8_t)(i + 1u); j < 72u; j++)
+            {
+                uint64_t d = D;
+                uint8_t  e = ecc;
+                if (i < 64u) { d ^= ((uint64_t)1u << i); } else { e ^= (uint8_t)(1u << (i - 64u)); }
+                if (j < 64u) { d ^= ((uint64_t)1u << j); } else { e ^= (uint8_t)(1u << (j - 64u)); }
+                if (Ecc72_Decode(&d, e) == ECC_UNCORRECTABLE) { okDet++; }
+                else { fail++; }
+            }
+        }
+    }
+
+    UART1_SendString("[ECC]   clean   OK = ");    UART1_SendHex32(okClean); /* 기대 0x10    = 16    */
+    UART1_SendString("\r\n[ECC]   correct OK = "); UART1_SendHex32(okCorr);  /* 기대 0x480   = 1152  */
+    UART1_SendString("\r\n[ECC]   detect  OK = "); UART1_SendHex32(okDet);   /* 기대 0x9FC0  = 40896 */
+    UART1_SendString("\r\n[ECC]   fail       = "); UART1_SendHex32(fail);     /* 기대 0             */
+    UART1_SendString(fail == 0u ? "\r\n[ECC]   ALL PASS\r\n" : "\r\n[ECC]   FAIL\r\n");
+}
+
 int main(void)
 {
     UART1_SendString("\r\n=============================\r\n");
@@ -74,6 +148,7 @@ int main(void)
     LED_Init();
 
     report_ecc_selftest();
+    report_ecc72_selftest();
 
     uint32_t beat = 0;
     while (1)

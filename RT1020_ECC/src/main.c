@@ -226,6 +226,66 @@ static void report_ecc_flash(void)
                         : "[ECC]   2-bit error   : FAIL\r\n");
 }
 
+static void report_ecc_scrub(void)
+{
+    const uint32_t base =FLS_TEST_SECTOR;
+    uint64_t D=0xA5A5A5A5A5A5A5A5ULL;
+    Fls_EraseTrace trace;
+    uint8_t cw[8],rb[9],ecc,mask;
+    uint64_t Dr;
+    Ecc_Status st;
+    uint32_t ce=0,ue=0;
+
+    UART1_SendString("[ECC] === E-5 patrol scrubbing (CE/UE, flash erase-rewrite) ===\r\n");
+
+    Ecc72_Init();
+    FlexSPI_InstallLut();
+
+    ecc=Ecc72_Encode(D);
+    (void)Fls_EraseSector(base, &trace);
+    put_u64(cw,D);
+    (void)Fls_ProgramPage(base,cw,8u,&trace);
+    (void)Fls_ProgramPage(base+8,&ecc,1u,&trace);
+
+    // 단일비트 오류 1개를 주입
+    mask=(uint8_t)(0xFF^(1<<0));
+    (void)Fls_ProgramPage(base,&mask,1u,&trace);
+    (void)FlexSPI_ReadData(base,rb,9);
+    dumpN("[ECC]   before scrub :", rb, 9u);
+
+    /* --- scrub 한 번: 읽어 디코딩하고, 정정 가능하면 erase+재기록으로 셀을 되살린다 --- */
+    Dr=get_u64(rb);
+    st=Ecc72_Decode(&Dr,rb[8]);
+    if(st==ECC_CORRECTED){
+        ce++;
+        /* flash 는 1->0 만 되므로, 데이터를 다시 쓰기 위해서는 지우고 다시 써야 한다.
+         * (DRAM 이라면 이 erase 없이 그냥 재기록으로 끝난다.) */
+        ecc=Ecc72_Encode(Dr);
+        (void)Fls_EraseSector(base,&trace);
+        put_u64(cw,Dr);
+        (void)Fls_ProgramPage(base,cw,8u,&trace);
+        (void)Fls_ProgramPage(base+8,&ecc,1u,&trace);
+        UART1_SendString("[ECC]   scrub: single-bit CE -> erase+rewrite done\r\n");
+    }else if(st==ECC_UNCORRECTABLE){
+        ue++;
+        UART1_SendString("[ECC]   scrub: UNCORRECTABLE UE -> data lost\r\n");
+    }
+
+    (void)FlexSPI_ReadData(base, rb, 9u);
+    dumpN("[ECC]   after scrub  :", rb, 9u);
+    Dr = get_u64(rb);
+    st = Ecc72_Decode(&Dr, rb[8]);
+    UART1_SendString(((st == ECC_NO_ERROR) && (Dr == D))
+                        ? "[ECC]   post-scrub read: NO_ERROR : OK\r\n"
+                        : "[ECC]   post-scrub read: FAIL\r\n");
+
+    UART1_SendString("[ECC]   CE count = ");
+    UART1_SendHex32(ce);
+    UART1_SendString("  UE count = ");
+    UART1_SendHex32(ue);
+    UART1_SendString("\r\n");
+}
+
 int main(void)
 {
     UART1_SendString("\r\n=============================\r\n");
@@ -237,6 +297,7 @@ int main(void)
     report_ecc_selftest();
     report_ecc72_selftest();
     report_ecc_flash();
+    report_ecc_scrub();
 
     uint32_t beat = 0;
     while (1)

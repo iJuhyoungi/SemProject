@@ -157,26 +157,26 @@ int main(void)
         UART1_SendString(" REJECTED - version below min (downgrade attempt)\r\n");
     }
     else {
-        uint32_t verdict=(uint32_t)verify_image(primary, EMBEDDED_PUBKEY_MODULUS);
-        verdict=glitch_bitflip(verdict);        // glitch 1비트 손상
+        // sec_bool_t verdict=verify_image(primary, EMBEDDED_PUBKEY_MODULUS);
+        sec_bool_t v1=verify_image(primary, EMBEDDED_PUBKEY_MODULUS);
+        sec_bool_t v2=verify_image(primary, EMBEDDED_PUBKEY_MODULUS);
 
-        if(GLITCH_SKIP_BRANCH_TAKEN() || verdict)
+        v1=(sec_bool_t)glitch_bitflip((uint32_t)v1);
+        if(v1!=v2){
+            UART1_SendString("[BL2] verdict mismatch between two runs - rejecting\r\n");
+        }
+
+        if(GLITCH_SKIP_BRANCH_TAKEN() 
+            || (SEC_IS_PASS(v1)&&SEC_IS_PASS(v2)))
         {
             UART1_SendString("[BL2] ");
             UART1_SendString(prim_name);
             UART1_SendString(" OK - jumping\r\n");
-            jump_to_image(primary);
+            jump_to_image(primary, v1);
         }
 
 
     }
-    // else if (verify_image(primary, EMBEDDED_PUBKEY_MODULUS))
-    // {
-    //     UART1_SendString("[BL2] ");
-    //     UART1_SendString(prim_name);
-    //     UART1_SendString(" OK - jumping\r\n");
-    //     jump_to_image(primary);
-    // }
 
     /* secondary fallback — 동일 검사 */
     UART1_SendString("[BL2] Falling back to ");
@@ -188,12 +188,22 @@ int main(void)
         UART1_SendString(sec_name);
         UART1_SendString(" REJECTED - version below min\r\n");
     }
-    else if (verify_image(secondary, EMBEDDED_PUBKEY_MODULUS))
+    // else if (verify_image(secondary, EMBEDDED_PUBKEY_MODULUS))
+    // else if(SEC_IS_PASS(verify_image(secondary, EMBEDDED_PUBKEY_MODULUS)))
+    else
     {
-        UART1_SendString("[BL2] ");
-        UART1_SendString(sec_name);
-        UART1_SendString(" OK - jumping\r\n");
-        jump_to_image(secondary);
+        sec_bool_t s1=verify_image(secondary, EMBEDDED_PUBKEY_MODULUS);
+        sec_bool_t s2=verify_image(secondary, EMBEDDED_PUBKEY_MODULUS);
+
+        if(s1!=s2){
+            UART1_SendString("[BL2] verdict mismatch between two runs - rejecting\r\n");
+        }
+        else if(SEC_IS_PASS(s1)&&SEC_IS_PASS(s2)){
+            UART1_SendString("[BL2] ");
+            UART1_SendString(sec_name);
+            UART1_SendString(" OK - jumping\r\n");
+            jump_to_image(secondary, s1);
+        }
     }
 
     /* 둘 다 FAIL */

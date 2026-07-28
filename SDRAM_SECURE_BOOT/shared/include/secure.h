@@ -9,7 +9,12 @@
 
 typedef uint32_t sec_bool_t;
 
-#define SEC_IS_PASS(v) (((v) == SEC_PASS) && ((v) != SEC_FAIL))
+static inline int sec_is_pass(sec_bool_t v)
+{
+    return (v == SEC_PASS) && (v != SEC_FAIL);
+}
+
+#define SEC_IS_PASS(v)  sec_is_pass(v)
 
 static inline sec_bool_t sec_memeq(const void *a, const void *b, size_t n)
 {

@@ -4,6 +4,9 @@
 #include "sha256.h"
 #include "rsa.h"
 #include "rt1020_regs.h"
+#include "secure.h"
+
+#define VERIFY_STEP_COUNT   6u
 
 static void print_digest_hex(const uint8_t digest[SHA256_DIGEST_SIZE])
 {
@@ -20,7 +23,7 @@ static void print_digest_hex(const uint8_t digest[SHA256_DIGEST_SIZE])
     UART1_SendString("\r\n");
 }
 
-static int vector_sane(uint32_t addr)
+static sec_bool_t vector_sane(uint32_t addr)
 {
     uint32_t sp = *(volatile uint32_t *)addr;
     uint32_t pc = *(volatile uint32_t *)(addr + 4);
@@ -29,31 +32,38 @@ static int vector_sane(uint32_t addr)
     if ((pc & 0xF0000000u) != 0x60000000u)
         return 0; /* PC FlexSPI Flash */
     if ((pc & 0x1u) != 0x1u)
-        return 0; /* Thumb bit */
-    return 1;
+        return SEC_FAIL; /* Thumb bit */
+    return SEC_PASS;
 }
 
-int verify_image(uint32_t base, const bn_t modulus)
+sec_bool_t verify_image(uint32_t base, const bn_t modulus)
 {
+    sec_bool_t result = SEC_FAIL;
+
+    volatile uint32_t steps = 0;
+
     if (!vector_sane(base))
     {
         UART1_SendString("[Verify] Vector sanity check failed\r\n");
-        return 0;
+        return SEC_FAIL;
     }
+    ++steps;
 
     uint32_t magic = *(volatile uint32_t *)(base + IMG_MAGIC_OFFSET);
     if (magic != IMG_MAGIC_VALUE)
     {
         UART1_SendString("[Verify] Magic check failed\r\n");
-        return 0;
+        return SEC_FAIL;
     }
+    ++steps;
 
     uint32_t size = *(volatile uint32_t *)(base + IMG_SIZE_OFFSET);
     if (size < IMG_SIZE_MIN || size > IMG_SIZE_MAX)
     {
         UART1_SendString("[Verify] Size check failed\r\n");
-        return 0;
+        return SEC_FAIL;
     }
+    ++steps;
 
     uint32_t expected_crc = *(volatile uint32_t *)(base + IMG_CRC_OFFSET);
     uint32_t computed_crc = CRC32_ComputeWithSkip(
@@ -61,13 +71,15 @@ int verify_image(uint32_t base, const bn_t modulus)
     if (computed_crc != expected_crc)
     {
         UART1_SendString("[Verify] CRC32 FAIL\r\n");
-        return 0;
+        return SEC_FAIL;
     }
+    ++steps;
 
     uint8_t img_hash[SHA256_DIGEST_SIZE];
     SHA256_Compute((const uint8_t *)base, size, img_hash);
     UART1_SendString("[Verify] SHA-256: ");
     print_digest_hex(img_hash);
+    ++steps;
 
     const uint8_t *signature = (const uint8_t *)(base + size);
     if (!rsa_verify_pkcs1_v15_sha256(img_hash, signature, modulus))
@@ -75,13 +87,26 @@ int verify_image(uint32_t base, const bn_t modulus)
         UART1_SendString("[Verify] RSA signature FAIL\r\n");
         return 0;
     }
+    ++steps;
+    if(steps!=VERIFY_STEP_COUNT){
+        UART1_SendString("[Verify] Step count mismatch\r\n");
+        return SEC_FAIL;
+    }
+
+    result=SEC_PASS;
 
     UART1_SendString("[Verify] RSA signature OK\r\n");
-    return 1;
+    return result;
 }
 
-void jump_to_image(uint32_t addr)
+void jump_to_image(uint32_t addr, sec_bool_t verdict)
 {
+    if (!SEC_IS_PASS(verdict))
+    {
+        UART1_SendString("[Jump] verdict is not PASS - refusing to jump\r\n");
+        return;
+    }
+
     uint32_t app_msp = *(volatile uint32_t *)addr;
     uint32_t app_pc = *(volatile uint32_t *)(addr + 4);
 

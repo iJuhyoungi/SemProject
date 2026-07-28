@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include "bignum.h"
+#include "secure.h"
 
 #define IMG_MAGIC_OFFSET 0x1Cu
 #define IMG_SIZE_OFFSET 0x20u
@@ -18,8 +19,8 @@
  * image 검증 : vector sanity -> magic -> size -> CRC32 -> SHA256 -> RSA-2048
  * 모든 단계 통과 시 1, 하나라도 실패 시 0, 단계별 "[Verify] ..." UART 출력
  */
-int verify_image(uint32_t base, const bn_t module);
+sec_bool_t verify_image(uint32_t base, const bn_t module);
 /* 검증된 image로 점프 (VTOR/MSP 재설정 -> Reset_Handler). 복귀 X */
-void jump_to_image(uint32_t addr);
+void jump_to_image(uint32_t addr, sec_bool_t verdict);
 
 #endif /* VERIFY_H */

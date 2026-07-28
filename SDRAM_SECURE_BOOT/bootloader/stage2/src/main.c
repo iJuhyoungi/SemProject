@@ -5,6 +5,7 @@
 #include "verify.h"
 #include "metadata.h"
 #include "embedded_pubkey.h"
+#include "glitch.h"
 
 #define APP_A_BASE 0x60048000u
 #define APP_B_BASE 0x60088000u
@@ -76,6 +77,7 @@ int main(void)
     UART1_SendString("\r\n-----------------------------\r\n");
     UART1_SendString("[BL2] Stage 2 verified & running\r\n");
     UART1_SendString("-----------------------------\r\n");
+    GLITCH_BANNER();
 
     LED_Init();
 
@@ -154,13 +156,27 @@ int main(void)
         UART1_SendString(prim_name);
         UART1_SendString(" REJECTED - version below min (downgrade attempt)\r\n");
     }
-    else if (verify_image(primary, EMBEDDED_PUBKEY_MODULUS))
-    {
-        UART1_SendString("[BL2] ");
-        UART1_SendString(prim_name);
-        UART1_SendString(" OK - jumping\r\n");
-        jump_to_image(primary);
+    else {
+        uint32_t verdict=(uint32_t)verify_image(primary, EMBEDDED_PUBKEY_MODULUS);
+        verdict=glitch_bitflip(verdict);        // glitch 1비트 손상
+
+        if(GLITCH_SKIP_BRANCH_TAKEN() || verdict)
+        {
+            UART1_SendString("[BL2] ");
+            UART1_SendString(prim_name);
+            UART1_SendString(" OK - jumping\r\n");
+            jump_to_image(primary);
+        }
+
+
     }
+    // else if (verify_image(primary, EMBEDDED_PUBKEY_MODULUS))
+    // {
+    //     UART1_SendString("[BL2] ");
+    //     UART1_SendString(prim_name);
+    //     UART1_SendString(" OK - jumping\r\n");
+    //     jump_to_image(primary);
+    // }
 
     /* secondary fallback — 동일 검사 */
     UART1_SendString("[BL2] Falling back to ");

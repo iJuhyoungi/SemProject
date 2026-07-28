@@ -18,5 +18,17 @@ add_compile_options(
 # shared/ = OTA_AB 에서 검증된 공통 plumbing (startup, clock, uart, crc32 ...).
 include_directories(shared/include)
 
+option(GLITCH_SIM_BITFLIP "Simulate a single-bit fault on the verify verdict" OFF)
+option(GLITCH_SIM_SKIP    "Simulate a skipped verdict branch" OFF)
+
+if(GLITCH_SIM_BITFLIP)
+    add_compile_definitions(GLITCH_SIM_BITFLIP)
+    message(STATUS "!! GLITCH SIM: single-bit fault on verdict")
+endif()
+if(GLITCH_SIM_SKIP)
+    add_compile_definitions(GLITCH_SIM_SKIP)
+    message(STATUS "!! GLITCH SIM: verdict branch skip")
+endif()
+
 add_subdirectory(bootloader)
 add_subdirectory(app)

@@ -34,6 +34,13 @@ target_link_libraries(test_rsa PRIVATE unity rsa)
 
 add_test(NAME rsa COMMAND test_rsa)
 
+# secure.h 는 헤더 전용이라 별도 라이브러리가 없습니다.
+add_executable(test_secure src/test_secure.c)
+target_include_directories(test_secure PRIVATE ../shared/include)
+target_link_libraries(test_secure PRIVATE unity)
+
+add_test(NAME secure COMMAND test_secure)
+
 # CTest 통합
 enable_testing()
 add_test(NAME bignum COMMAND test_bignum)

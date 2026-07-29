@@ -11,19 +11,19 @@ void tearDown(void) {}
 
 void test_rsa_verify_v1_hello_world(void)
 {
-    TEST_ASSERT_EQUAL_INT(1,
+    TEST_ASSERT_EQUAL_HEX32(SEC_PASS,
         rsa_verify_pkcs1_v15_sha256(v1_hash, v1_signature, rsa_test_modulus));
 }
 
 void test_rsa_verify_v2_64kb_image(void)
 {
-    TEST_ASSERT_EQUAL_INT(1,
+    TEST_ASSERT_EQUAL_HEX32(SEC_PASS,
         rsa_verify_pkcs1_v15_sha256(v2_hash, v2_signature, rsa_test_modulus));
 }
 
 void test_rsa_verify_v3_empty_input(void)
 {
-    TEST_ASSERT_EQUAL_INT(1,
+    TEST_ASSERT_EQUAL_HEX32(SEC_PASS,
         rsa_verify_pkcs1_v15_sha256(v3_hash, v3_signature, rsa_test_modulus));
 }
 
@@ -31,13 +31,13 @@ void test_rsa_verify_v3_empty_input(void)
 
 void test_rsa_verify_v4_tampered_signature_fails(void)
 {
-    TEST_ASSERT_EQUAL_INT(0,
+    TEST_ASSERT_EQUAL_HEX32(SEC_FAIL,
         rsa_verify_pkcs1_v15_sha256(v4_hash, v4_tampered_signature, rsa_test_modulus));
 }
 
 void test_rsa_verify_v5_mismatched_hash_signature_fails(void)
 {
-    TEST_ASSERT_EQUAL_INT(0,
+    TEST_ASSERT_EQUAL_HEX32(SEC_FAIL,
         rsa_verify_pkcs1_v15_sha256(v5_wrong_hash, v5_mismatched_signature, rsa_test_modulus));
 }
 

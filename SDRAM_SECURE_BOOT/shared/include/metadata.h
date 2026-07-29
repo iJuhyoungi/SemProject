@@ -2,6 +2,7 @@
 #define METADATA_H
 
 #include <stdint.h>
+#include "secure.h"
 
 #define METADATA_MAGIC 0x5EC8B007u        // "SECBOOT" 비트변형
 #define METADATA_PRIMARY_BASE 0x600C8000u // primary app base 주소
@@ -30,12 +31,15 @@ typedef enum
 /**
  * Dual metadata 를 읽고 valid 한 것 중 큰 sequence_number 채택.
  *
+ * reason 은 UART 진단용 정보일 뿐 보안 판정의 근거가 아닙니다. 판정은 반환값이
+ * 담고 있고, 반드시 SEC_IS_PASS() 로 확인해야 합니다.
+ *
  * @param out             결과 metadata (성공 시 채워짐)
  * @param primary_reason  primary 검증 reason (NULL 허용)
  * @param backup_reason   backup 검증 reason (NULL 허용)
- * @return 1 if 최소 한쪽 valid, 0 if 둘 다 invalid
+ * @return SEC_PASS if 최소 한쪽 valid, SEC_FAIL if 둘 다 invalid
  */
 
-int metadata_read_active(metadata_t *out, metadata_reason_t *primary_reason, metadata_reason_t *backup_reason);
+sec_bool_t metadata_read_active(metadata_t *out, metadata_reason_t *primary_reason, metadata_reason_t *backup_reason);
 
 #endif /* METADATA_H */

@@ -28,9 +28,9 @@ static sec_bool_t vector_sane(uint32_t addr)
     uint32_t sp = *(volatile uint32_t *)addr;
     uint32_t pc = *(volatile uint32_t *)(addr + 4);
     if ((sp & 0xF0000000u) != 0x20000000u)
-        return 0; /* SP in DTCM/OCRAM */
+        return SEC_FAIL; /* SP in DTCM/OCRAM */
     if ((pc & 0xF0000000u) != 0x60000000u)
-        return 0; /* PC FlexSPI Flash */
+        return SEC_FAIL; /* PC FlexSPI Flash */
     if ((pc & 0x1u) != 0x1u)
         return SEC_FAIL; /* Thumb bit */
     return SEC_PASS;
@@ -42,7 +42,7 @@ sec_bool_t verify_image(uint32_t base, const bn_t modulus)
 
     volatile uint32_t steps = 0;
 
-    if (!vector_sane(base))
+    if (!SEC_IS_PASS(vector_sane(base)))
     {
         UART1_SendString("[Verify] Vector sanity check failed\r\n");
         return SEC_FAIL;
@@ -82,10 +82,10 @@ sec_bool_t verify_image(uint32_t base, const bn_t modulus)
     ++steps;
 
     const uint8_t *signature = (const uint8_t *)(base + size);
-    if (!rsa_verify_pkcs1_v15_sha256(img_hash, signature, modulus))
+    if (!SEC_IS_PASS(rsa_verify_pkcs1_v15_sha256(img_hash, signature, modulus)))
     {
         UART1_SendString("[Verify] RSA signature FAIL\r\n");
-        return 0;
+        return SEC_FAIL;
     }
     ++steps;
     if(steps!=VERIFY_STEP_COUNT){

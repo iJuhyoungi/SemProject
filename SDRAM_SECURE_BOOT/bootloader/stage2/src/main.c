@@ -94,7 +94,7 @@ int main(void)
 
     metadata_t md;
     metadata_reason_t p_reason, b_reason;
-    int ok = metadata_read_active(&md, &p_reason, &b_reason);
+    sec_bool_t ok = metadata_read_active(&md, &p_reason, &b_reason);
 
     UART1_SendString("[BL2] Metadata Primary: ");
     UART1_SendString(metadata_reason_str(p_reason));
@@ -103,7 +103,7 @@ int main(void)
     UART1_SendString(metadata_reason_str(b_reason));
     UART1_SendString("\r\n");
 
-    if (!ok)
+    if (!SEC_IS_PASS(ok))
     {
         UART1_SendString("[BL2] Metadata both invalid - halting (fail-safe)\r\n");
         halt_on_fail();
@@ -166,7 +166,7 @@ int main(void)
             UART1_SendString("[BL2] verdict mismatch between two runs - rejecting\r\n");
         }
 
-        if(GLITCH_SKIP_BRANCH_TAKEN() 
+        else if(GLITCH_SKIP_BRANCH_TAKEN() 
             || (SEC_IS_PASS(v1)&&SEC_IS_PASS(v2)))
         {
             UART1_SendString("[BL2] ");

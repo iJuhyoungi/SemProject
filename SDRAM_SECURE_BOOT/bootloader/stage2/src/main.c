@@ -127,23 +127,28 @@ int main(void)
     uint32_t primary, secondary;
     uint32_t prim_ver, sec_ver;
     const char *prim_name, *sec_name;
+    const uint8_t *prim_digest, *sec_digest;
     if (vb > va)
     {
         primary = APP_B_BASE;
         prim_name = "App B";
         prim_ver = vb;
+        prim_digest = md.app_b_digest;
         secondary = APP_A_BASE;
         sec_name = "App A";
         sec_ver = va;
+        sec_digest = md.app_a_digest;
     }
     else
     {
         primary = APP_A_BASE;
         prim_name = "App A";
         prim_ver = va;
+        prim_digest = md.app_a_digest;
         secondary = APP_B_BASE;
         sec_name = "App B";
         sec_ver = vb;
+        sec_digest = md.app_b_digest;
     }
 
     /* primary 시도 — version 검사 + verify */
@@ -157,15 +162,26 @@ int main(void)
         UART1_SendString(" REJECTED - version below min (downgrade attempt)\r\n");
     }
     else {
+        uint8_t d1[SHA256_DIGEST_SIZE], d2[SHA256_DIGEST_SIZE];
+
         // sec_bool_t verdict=verify_image(primary, EMBEDDED_PUBKEY_MODULUS);
-        sec_bool_t v1=verify_image(primary, EMBEDDED_PUBKEY_MODULUS);
-        sec_bool_t v2=verify_image(primary, EMBEDDED_PUBKEY_MODULUS);
+        sec_bool_t v1=verify_image(primary, EMBEDDED_PUBKEY_MODULUS, d1);
+        sec_bool_t v2=verify_image(primary, EMBEDDED_PUBKEY_MODULUS, d2);
 
         v1=(sec_bool_t)glitch_bitflip((uint32_t)v1);
         if(v1!=v2){
             UART1_SendString("[BL2] verdict mismatch between two runs - rejecting\r\n");
         }
-
+        else if (!SEC_IS_PASS(sec_memeq(d1, d2, SHA256_DIGEST_SIZE)))
+        {
+            UART1_SendString("[BL2] measurement mismatch between two runs - rejecting\r\n");
+        }
+        else if (!SEC_IS_PASS(sec_memeq(d1, prim_digest, SHA256_DIGEST_SIZE)))
+        {
+            UART1_SendString("[BL2] ");
+            UART1_SendString(prim_name);
+            UART1_SendString(" REJECTED - measurement does not match policy\r\n");
+        }
         else if(GLITCH_SKIP_BRANCH_TAKEN() 
             || (SEC_IS_PASS(v1)&&SEC_IS_PASS(v2)))
         {
@@ -192,11 +208,22 @@ int main(void)
     // else if(SEC_IS_PASS(verify_image(secondary, EMBEDDED_PUBKEY_MODULUS)))
     else
     {
-        sec_bool_t s1=verify_image(secondary, EMBEDDED_PUBKEY_MODULUS);
-        sec_bool_t s2=verify_image(secondary, EMBEDDED_PUBKEY_MODULUS);
+        uint8_t sd1[SHA256_DIGEST_SIZE], sd2[SHA256_DIGEST_SIZE];
+        sec_bool_t s1=verify_image(secondary, EMBEDDED_PUBKEY_MODULUS, sd1);
+        sec_bool_t s2=verify_image(secondary, EMBEDDED_PUBKEY_MODULUS, sd2);
 
         if(s1!=s2){
             UART1_SendString("[BL2] verdict mismatch between two runs - rejecting\r\n");
+        }
+        else if (!SEC_IS_PASS(sec_memeq(sd1, sd2, SHA256_DIGEST_SIZE)))
+        {
+            UART1_SendString("[BL2] measurement mismatch between two runs - rejecting\r\n");
+        }
+        else if (!SEC_IS_PASS(sec_memeq(sd1, sec_digest, SHA256_DIGEST_SIZE)))
+        {
+            UART1_SendString("[BL2] ");
+            UART1_SendString(sec_name);
+            UART1_SendString(" REJECTED - measurement does not match policy\r\n");
         }
         else if(SEC_IS_PASS(s1)&&SEC_IS_PASS(s2)){
             UART1_SendString("[BL2] ");

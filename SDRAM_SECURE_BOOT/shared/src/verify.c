@@ -5,6 +5,7 @@
 #include "rsa.h"
 #include "rt1020_regs.h"
 #include "secure.h"
+#include <string.h>
 
 #define VERIFY_STEP_COUNT   6u
 
@@ -36,7 +37,7 @@ static sec_bool_t vector_sane(uint32_t addr)
     return SEC_PASS;
 }
 
-sec_bool_t verify_image(uint32_t base, const bn_t modulus)
+sec_bool_t verify_image(uint32_t base, const bn_t modulus, uint8_t out_digest[SHA256_DIGEST_SIZE])
 {
     sec_bool_t result = SEC_FAIL;
 
@@ -79,6 +80,8 @@ sec_bool_t verify_image(uint32_t base, const bn_t modulus)
     SHA256_Compute((const uint8_t *)base, size, img_hash);
     UART1_SendString("[Verify] SHA-256: ");
     print_digest_hex(img_hash);
+
+    memcpy(out_digest, img_hash, SHA256_DIGEST_SIZE);
     ++steps;
 
     const uint8_t *signature = (const uint8_t *)(base + size);

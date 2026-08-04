@@ -7,18 +7,22 @@
 #define METADATA_MAGIC 0x5EC8B007u        // "SECBOOT" 비트변형
 #define METADATA_PRIMARY_BASE 0x600C8000u // primary app base 주소
 #define METADATA_BACKUP_BASE 0x600C9000u  // backup app base 주소
-#define METADATA_HEADER_SIZE 0x20u        // magic + seq + min_ver + reserved (= SHA 입력)
-#define METADATA_SIG_OFFSET 0x20u         // RSA-2048 signature 시작
+#define METADATA_HEADER_SIZE 0x60u        // magic + seq + min_ver + reserved (= SHA 입력)
+#define METADATA_SIG_OFFSET 0x60u         // RSA-2048 signature 시작
 #define METADATA_SIG_SIZE 256u            // RSA-2048 signature 크기
+#define METADATA_DIGEST_SIZE 32u          // App 측정값 = SHA-256
 
 /* metadata header layout (flash의 첫 64 byte) */
 typedef struct
 {
-    uint32_t magic;                  // 0x00
-    uint32_t sequence_number;        // 0x04
-    uint32_t min_acceptable_version; // 0x08
-    uint32_t reserved[5];            // 0x0C ~ 0x1F
-    uint8_t signature[256];          // 0x20 ~ 0x11F (RSA-2048)
+    uint32_t magic;                                    // 0x00
+    uint32_t sequence_number;                          // 0x04
+    uint32_t min_acceptable_version;                   // 0x08
+    uint32_t reserved0;                                // 0x0C
+    uint8_t  app_a_digest[METADATA_DIGEST_SIZE];       // 0x10 ~ 0x2F  SHA-256(App A code)
+    uint8_t  app_b_digest[METADATA_DIGEST_SIZE];       // 0x30 ~ 0x4F  SHA-256(App B code)
+    uint8_t  reserved1[16];                            // 0x50 ~ 0x5F
+    uint8_t  signature[METADATA_SIG_SIZE];             // 0x60 ~ 0x15F (RSA-2048)
 } metadata_t;
 
 typedef enum

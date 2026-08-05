@@ -164,13 +164,30 @@ int main(void)
     else {
         uint8_t d1[SHA256_DIGEST_SIZE], d2[SHA256_DIGEST_SIZE];
 
-        // sec_bool_t verdict=verify_image(primary, EMBEDDED_PUBKEY_MODULUS);
-        sec_bool_t v1=verify_image(primary, EMBEDDED_PUBKEY_MODULUS, d1);
-        sec_bool_t v2=verify_image(primary, EMBEDDED_PUBKEY_MODULUS, d2);
+        sec_bool_t v1 = verify_image(primary, EMBEDDED_ROOT_MODULUS, d1);
+        sec_bool_t v2 = verify_image(primary, EMBEDDED_ROOT_MODULUS, d2);
 
-        v1=(sec_bool_t)glitch_bitflip((uint32_t)v1);
-        if(v1!=v2){
+        v1 = (sec_bool_t)glitch_bitflip((uint32_t)v1);
+
+        if (v1 != v2)
+        {
             UART1_SendString("[BL2] verdict mismatch between two runs - rejecting\r\n");
+        }
+        /*
+         * 서명 판정을 측정값보다 먼저 봅니다. 서명이 깨진 이미지의 측정값을
+         * 따지는 것은 의미가 없고, 진단 메시지가 실제 원인을 가리켜야 합니다.
+         *
+         * 글리치 ② 는 이 분기가 실행되지 않는 상황을 모사합니다. 조건을 억지로
+         * 참으로 만드는 게 아니라 분기 자체를 건너뛰게 하는 형태라 실제 명령
+         * 스킵에 더 가깝습니다. 건너뛰면 아래 검사들로 흘러가고, 마지막에는
+         * jump_to_image 의 재판정이 막습니다.
+         */
+        else if (!GLITCH_SKIP_BRANCH_TAKEN()
+                 && (!SEC_IS_PASS(v1) || !SEC_IS_PASS(v2)))
+        {
+            UART1_SendString("[BL2] ");
+            UART1_SendString(prim_name);
+            UART1_SendString(" REJECTED - signature verdict not PASS\r\n");
         }
         else if (!SEC_IS_PASS(sec_memeq(d1, d2, SHA256_DIGEST_SIZE)))
         {
@@ -182,16 +199,17 @@ int main(void)
             UART1_SendString(prim_name);
             UART1_SendString(" REJECTED - measurement does not match policy\r\n");
         }
-        else if(GLITCH_SKIP_BRANCH_TAKEN() 
-            || (SEC_IS_PASS(v1)&&SEC_IS_PASS(v2)))
+        else
         {
+            /* 여기 도달했다는 것은 위 판정 분기가 이미 v1·v2 를 통과시켰다는 뜻입니다.
+             * 같은 조건을 바로 옆줄에서 또 쓰면 두 분기 명령이 인접해 한 번의
+             * 글리치에 함께 날아갈 수 있습니다. 두 번째 확인은 다른 함수인
+             * jump_to_image 안, 돌이킬 수 없는 지점 직전에 있습니다. */
             UART1_SendString("[BL2] ");
             UART1_SendString(prim_name);
             UART1_SendString(" OK - jumping\r\n");
             jump_to_image(primary, v1);
         }
-
-
     }
 
     /* secondary fallback — 동일 검사 */
@@ -204,16 +222,23 @@ int main(void)
         UART1_SendString(sec_name);
         UART1_SendString(" REJECTED - version below min\r\n");
     }
-    // else if (verify_image(secondary, EMBEDDED_PUBKEY_MODULUS))
-    // else if(SEC_IS_PASS(verify_image(secondary, EMBEDDED_PUBKEY_MODULUS)))
+    // else if (verify_image(secondary, EMBEDDED_ROOT_MODULUS))
+    // else if(SEC_IS_PASS(verify_image(secondary, EMBEDDED_ROOT_MODULUS)))
     else
     {
         uint8_t sd1[SHA256_DIGEST_SIZE], sd2[SHA256_DIGEST_SIZE];
-        sec_bool_t s1=verify_image(secondary, EMBEDDED_PUBKEY_MODULUS, sd1);
-        sec_bool_t s2=verify_image(secondary, EMBEDDED_PUBKEY_MODULUS, sd2);
+        sec_bool_t s1=verify_image(secondary, EMBEDDED_ROOT_MODULUS, sd1);
+        sec_bool_t s2=verify_image(secondary, EMBEDDED_ROOT_MODULUS, sd2);
 
-        if(s1!=s2){
+        if (s1 != s2)
+        {
             UART1_SendString("[BL2] verdict mismatch between two runs - rejecting\r\n");
+        }
+        else if (!SEC_IS_PASS(s1) || !SEC_IS_PASS(s2))
+        {
+            UART1_SendString("[BL2] ");
+            UART1_SendString(sec_name);
+            UART1_SendString(" REJECTED - signature verdict not PASS\r\n");
         }
         else if (!SEC_IS_PASS(sec_memeq(sd1, sd2, SHA256_DIGEST_SIZE)))
         {
@@ -225,7 +250,8 @@ int main(void)
             UART1_SendString(sec_name);
             UART1_SendString(" REJECTED - measurement does not match policy\r\n");
         }
-        else if(SEC_IS_PASS(s1)&&SEC_IS_PASS(s2)){
+        else
+        {
             UART1_SendString("[BL2] ");
             UART1_SendString(sec_name);
             UART1_SendString(" OK - jumping\r\n");

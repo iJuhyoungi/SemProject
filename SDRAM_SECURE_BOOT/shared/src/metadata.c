@@ -21,7 +21,7 @@ static sec_bool_t validate(const metadata_t *m, metadata_reason_t *reason)
     SHA256_Compute((const uint8_t *)m, METADATA_HEADER_SIZE, hash);
 
     /* RSA verify */
-    if (!SEC_IS_PASS(rsa_verify_pkcs1_v15_sha256(hash, m->signature, EMBEDDED_PUBKEY_MODULUS)))
+    if (!SEC_IS_PASS(rsa_verify_pkcs1_v15_sha256(hash, m->signature, EMBEDDED_ROOT_MODULUS)))
     {
         *reason = METADATA_BAD_SIGNATURE;
         return SEC_FAIL;

@@ -11,6 +11,7 @@ Usage:
 """
 
 
+import os
 import argparse
 import hashlib
 import struct
@@ -20,8 +21,10 @@ from pathlib import Path
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 
-ROOT=Path(__file__).parent.parent
-KEY_PATH=ROOT/"tests/vectors/rsa_test_key.pem"
+PROJ = Path(__file__).parent.parent
+KEY_DIR = Path(os.environ.get("SB_KEY_DIR", Path.home() / ".secure_boot_keys"))
+KEY_PATH = KEY_DIR / "root_private.pem"
+
 SECTOR_SIZE=0x1000
 HEADER_SIZE=0x60
 SIG_OFFSET=0x60

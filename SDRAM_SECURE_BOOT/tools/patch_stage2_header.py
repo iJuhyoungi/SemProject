@@ -17,6 +17,7 @@ Stage 1 의 Stage2_Verify() 가 magic/size/CRC32 체크를 통과하도록
 
 Step 3 에서 SHA-256 + RSA 서명 첨부 도구로 확장 예정.
 """
+import os
 import argparse
 import hashlib
 import struct
@@ -31,7 +32,8 @@ OFF_MAGIC = 0x1C
 OFF_SIZE = 0x20
 OFF_CRC = 0x24
 OFF_VERSION = 0x28
-DEFAULT_KEY = Path(__file__).parent.parent / "tests/vectors/rsa_test_key.pem"
+KEY_DIR = Path(os.environ.get("SB_KEY_DIR", Path.home() / ".secure_boot_keys"))
+DEFAULT_KEY = KEY_DIR / "root_private.pem"
 
 
 def patch(path: str, key_path: Path = DEFAULT_KEY, version: int = 0) -> None:
@@ -60,6 +62,8 @@ def patch(path: str, key_path: Path = DEFAULT_KEY, version: int = 0) -> None:
     sha = hashlib.sha256(bytes(buf)).hexdigest()
     
     # private key로 서명
+    if not key_path.exists():
+        sys.exit(f"서명 키가 없습니다 : {key_path}\n")
     with open(key_path, "rb") as f:
         key=serialization.load_pem_private_key(f.read(), password=None)
     signature=key.sign(bytes(buf), padding.PKCS1v15(),hashes.SHA256())

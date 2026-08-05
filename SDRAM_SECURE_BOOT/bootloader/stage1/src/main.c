@@ -155,8 +155,8 @@ int main()
     UART1_SendString("[BL1] Verifying Stage 2 ...\r\n");
 
     uint8_t s2_digest[SHA256_DIGEST_SIZE];
-    sec_bool_t v1 = verify_image(STAGE2_BASE, EMBEDDED_PUBKEY_MODULUS, s2_digest);
-    sec_bool_t v2 = verify_image(STAGE2_BASE, EMBEDDED_PUBKEY_MODULUS, s2_digest);
+    sec_bool_t v1 = verify_image(STAGE2_BASE, EMBEDDED_ROOT_MODULUS, s2_digest);
+    sec_bool_t v2 = verify_image(STAGE2_BASE, EMBEDDED_ROOT_MODULUS, s2_digest);
 
     if(v1!=v2){
         UART1_SendString("[BL1] verdict mismatch between two runs - rejecting\r\n");

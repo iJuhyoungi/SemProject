@@ -18,6 +18,17 @@ add_compile_options(
 # shared/ = OTA_AB 에서 검증된 공통 plumbing (startup, clock, uart, crc32 ...).
 include_directories(shared/include)
 
+# 서명 키 위치. private key 는 프로젝트 밖에 둡니다.
+if(DEFINED ENV{SB_KEY_DIR})
+    set(SB_KEY_DIR "$ENV{SB_KEY_DIR}")
+else()
+    set(SB_KEY_DIR "$ENV{HOME}/.secure_boot_keys")
+endif()
+
+# App 은 release 키로 서명합니다. Stage 2 는 검증자라 root 키를 유지합니다.
+set(RELEASE_KEY "${SB_KEY_DIR}/release_v1_private.pem")
+message(STATUS "Release signing key: ${RELEASE_KEY}")
+
 option(GLITCH_SIM_BITFLIP "Simulate a single-bit fault on the verify verdict" OFF)
 option(GLITCH_SIM_SKIP    "Simulate a skipped verdict branch" OFF)
 

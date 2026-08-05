@@ -5,6 +5,7 @@
 #include "verify.h"
 #include "metadata.h"
 #include "embedded_pubkey.h"
+#include "keycert.h"
 #include "glitch.h"
 
 #define APP_A_BASE 0x60048000u
@@ -72,6 +73,21 @@ static const char *metadata_reason_str(metadata_reason_t r)
     }
 }
 
+static const char *keycert_reason_str(keycert_reason_t r)
+{
+    switch (r)
+    {
+    case KEYCERT_OK:
+        return "OK";
+    case KEYCERT_BAD_MAGIC:
+        return "BAD_MAGIC";
+    case KEYCERT_BAD_SIGNATURE:
+        return "BAD_SIGNATURE";
+    default:
+        return "UNKNOWN";
+    }
+}
+
 int main(void)
 {
     UART1_SendString("\r\n-----------------------------\r\n");
@@ -123,6 +139,32 @@ int main(void)
     print_hex32(min_ver);
     UART1_SendString("\r\n");
 
+    /*
+     * Key certificate — App 서명 검증에 쓸 release 공개키를 가져옵니다.
+     * 인증서 자체는 root 키로 검증하므로, 공격자가 자기 공개키로 바꿔치기해도
+     * root 서명을 만들 수 없어 여기서 걸립니다.
+     */
+    bn_t release_modulus;
+    uint32_t key_id = 0, key_version = 0;
+    keycert_reason_t kc_reason;
+    sec_bool_t kc_ok = keycert_load(release_modulus, &key_id, &key_version, &kc_reason);
+
+    UART1_SendString("[BL2] Key cert: ");
+    UART1_SendString(keycert_reason_str(kc_reason));
+    UART1_SendString("\r\n");
+
+    if (!SEC_IS_PASS(kc_ok))
+    {
+        UART1_SendString("[BL2] Key certificate invalid - halting (fail-safe)\r\n");
+        halt_on_fail();
+    }
+
+    UART1_SendString("[BL2] Key id = ");
+    print_hex32(key_id);
+    UART1_SendString("  version = ");
+    print_hex32(key_version);
+    UART1_SendString("\r\n");
+
     /*priority check*/
     uint32_t primary, secondary;
     uint32_t prim_ver, sec_ver;
@@ -164,8 +206,8 @@ int main(void)
     else {
         uint8_t d1[SHA256_DIGEST_SIZE], d2[SHA256_DIGEST_SIZE];
 
-        sec_bool_t v1 = verify_image(primary, EMBEDDED_ROOT_MODULUS, d1);
-        sec_bool_t v2 = verify_image(primary, EMBEDDED_ROOT_MODULUS, d2);
+        sec_bool_t v1 = verify_image(primary, release_modulus, d1);
+        sec_bool_t v2 = verify_image(primary, release_modulus, d2);
 
         v1 = (sec_bool_t)glitch_bitflip((uint32_t)v1);
 
@@ -227,8 +269,8 @@ int main(void)
     else
     {
         uint8_t sd1[SHA256_DIGEST_SIZE], sd2[SHA256_DIGEST_SIZE];
-        sec_bool_t s1=verify_image(secondary, EMBEDDED_ROOT_MODULUS, sd1);
-        sec_bool_t s2=verify_image(secondary, EMBEDDED_ROOT_MODULUS, sd2);
+        sec_bool_t s1 = verify_image(secondary, release_modulus, sd1);
+        sec_bool_t s2 = verify_image(secondary, release_modulus, sd2);
 
         if (s1 != s2)
         {

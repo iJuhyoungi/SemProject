@@ -99,6 +99,19 @@ flash_metadata_backup() {
     echo ""
 }
 
+flash_keycert() {
+    echo "========================================"
+    echo " Flashing Key Certificate (0x600CA000)"
+    echo "========================================"
+    if [ ! -f build/keycert.bin ]; then
+        echo "build/keycert.bin not found. Generate with:"
+        echo "  python3 tools/make_key_cert.py --key-id 1 --key-version 1"
+        return 1
+    fi
+    pyocd flash build/keycert.bin $DEV --base-address 0x600CA000
+    echo ""
+}
+
 
 
 case "$TARGET" in
@@ -122,9 +135,10 @@ case "$TARGET" in
     metadata_primary)  flash_metadata_primary ;;
     metadata_backup)   flash_metadata_backup ;;
     metadata)          flash_metadata_primary; flash_metadata_backup ;;   # 둘 다 (초기 setup)
+    keycert)           flash_keycert ;;
 
     *)
-        echo "usage: $0 [all|stage1|stage2|app_a|app_b|apps|metadata]   (default: all)"
+        echo "usage: $0 [all|stage1|stage2|app_a|app_b|apps|metadata|keycert]   (default: all)"
         exit 1
         ;;
 esac

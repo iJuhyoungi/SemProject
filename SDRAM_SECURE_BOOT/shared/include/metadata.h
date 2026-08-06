@@ -18,7 +18,7 @@ typedef struct
     uint32_t magic;                                    // 0x00
     uint32_t sequence_number;                          // 0x04
     uint32_t min_acceptable_version;                   // 0x08
-    uint32_t reserved0;                                // 0x0C
+    uint32_t min_key_version;                          // 0x0C
     uint8_t  app_a_digest[METADATA_DIGEST_SIZE];       // 0x10 ~ 0x2F  SHA-256(App A code)
     uint8_t  app_b_digest[METADATA_DIGEST_SIZE];       // 0x30 ~ 0x4F  SHA-256(App B code)
     uint8_t  reserved1[16];                            // 0x50 ~ 0x5F

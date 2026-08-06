@@ -49,14 +49,14 @@ def app_measurement(bin_path: Path) -> bytes:
 
     return hashlib.sha256(data[:size]).digest()
 
-def make_metadata(seq: int, min_version: int, key_path: Path,
+def make_metadata(seq: int, min_version: int, min_key_version: int, key_path: Path,
                 digest_a: bytes, digest_b: bytes) -> bytes:
     buf = bytearray(b"\xFF" * SECTOR_SIZE)
 
     struct.pack_into("<I", buf, 0x00, MAGIC)
     struct.pack_into("<I", buf, 0x04, seq)
     struct.pack_into("<I", buf, 0x08, min_version)
-    struct.pack_into("<I", buf, 0x0C, 0)                 # reserved0
+    struct.pack_into("<I", buf, 0x0C, min_key_version)                 # reserved0
 
     # 정책이 승인하는 App 의 신원(측정값). 서명이 이 값까지 덮으므로
     # 다른 앱을 끼우면 Stage 2 의 측정값 대조에서 걸립니다.
@@ -80,6 +80,8 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--seq", type=int, required=True)
     ap.add_argument("--min-version", type=int, required=True)
+    ap.add_argument("--min-key-version", type=int, default=1,
+                      help="이 값보다 낮은 key_version 의 인증서를 거부합니다 (키 폐기)")
     ap.add_argument("--app-a", default="build/app/app_a/app_a.bin",
                     help="정책이 승인할 App A 이미지 (측정값 계산 대상)")
     ap.add_argument("--app-b", default="build/app/app_b/app_b.bin",
@@ -92,13 +94,14 @@ def main():
     out.parent.mkdir(parents=True, exist_ok=True)
     digest_a = app_measurement(Path(args.app_a))
     digest_b = app_measurement(Path(args.app_b))
-    data = make_metadata(args.seq, args.min_version, Path(args.key), digest_a, digest_b)
+    data = make_metadata(args.seq, args.min_version, args.min_key_version, Path(args.key), digest_a, digest_b)
     out.write_bytes(data)
 
     print(f"Wrote {out}")
     print(f"  magic       = 0x{MAGIC:08X}")
     print(f"  seq         = {args.seq}")
     print(f"  min_version = {args.min_version}")
+    print(f"  min_key_version = {args.min_key_version}")
     print(f"  App A 측정값 = {digest_a.hex()}")
     print(f"  App B 측정값 = {digest_b.hex()}")
     print(f"  SHA-256(header) = {hashlib.sha256(data[:HEADER_SIZE]).hexdigest()}")

@@ -26,7 +26,8 @@ else()
 endif()
 
 # App 은 release 키로 서명합니다. Stage 2 는 검증자라 root 키를 유지합니다.
-set(RELEASE_KEY "${SB_KEY_DIR}/release_v1_private.pem")
+set(SB_RELEASE_KEY_NAME "release_v1_private.pem" CACHE STRING "release signing key file name")
+set(RELEASE_KEY "${SB_KEY_DIR}/${SB_RELEASE_KEY_NAME}")
 message(STATUS "Release signing key: ${RELEASE_KEY}")
 
 option(GLITCH_SIM_BITFLIP "Simulate a single-bit fault on the verify verdict" OFF)

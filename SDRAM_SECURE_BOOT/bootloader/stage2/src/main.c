@@ -165,6 +165,17 @@ int main(void)
     print_hex32(key_version);
     UART1_SendString("\r\n");
 
+    UART1_SendString("[BL2] Min Key Version = ");
+    print_hex32(md.min_key_version);
+    UART1_SendString("\r\n");
+
+    sec_bool_t key_version_ok = (key_version >= md.min_key_version) ? SEC_PASS : SEC_FAIL;
+    if (!SEC_IS_PASS(key_version_ok) || (key_version < md.min_key_version))
+    {
+        UART1_SendString("[BL2] Key REVOKED - key_version below policy minimum\r\n");
+        halt_on_fail();
+    }
+
     /*priority check*/
     uint32_t primary, secondary;
     uint32_t prim_ver, sec_ver;

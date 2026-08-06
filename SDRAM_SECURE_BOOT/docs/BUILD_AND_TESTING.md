@@ -75,14 +75,17 @@ python3 tools/set_metadata.py --seq 11 --min-version 2
 
 | 항목 | 위치 | git | 비고 |
 |---|---|---|---|
-| Private key | `tests/vectors/rsa_test_key.pem` | ❌ `.gitignore` | 서명 권한입니다. 외부에 절대 유출되면 안 됩니다. |
-| Public modulus | `shared/include/embedded_pubkey.h` | ✅ tracked | 자동으로 생성되고 Stage 1, 2 에 임베드됩니다. |
+| **Root private key** | `$SB_KEY_DIR/root_private.pem` (기본 `~/.secure_boot_keys/`) | **repo 밖** | Stage 2·정책·키 인증서 서명. 거의 꺼내지 않습니다 |
+| **Release private key** | `$SB_KEY_DIR/release_vN_private.pem` | **repo 밖** | App 서명. 매 릴리스마다 사용하며 교체 가능합니다 |
+| Root public modulus | `shared/include/embedded_pubkey.h` | ✅ tracked | 자동 생성되어 Stage 1·2 에 임베드됩니다 (`EMBEDDED_ROOT_MODULUS`) |
+| Release public modulus | 키 인증서 (`0x600CA000`) | — | flash 에 데이터로 두고 root 서명으로 봉인합니다 |
+| 테스트 벡터용 키 | `tests/vectors/rsa_test_key.pem` | ❌ `.gitignore` | **호스트 UT 벡터 생성 전용**. 보드 서명에 쓰지 않습니다 |
 
-> 이 프로젝트의 PEM 은 **테스트 전용 키** 입니다. 실제 제품에는 절대 쓰지 마세요.
+> private key 를 프로젝트 디렉토리 밖에 두는 이유가 있습니다. `.gitignore` 로 거르는
+> 방법은 패턴을 고치거나 `git add -f` 한 번이면 무너집니다. 애초에 repo 안에 없으면
+> 실수할 여지 자체가 사라집니다.
 >
-> 이미지 서명과 메타데이터 서명에 **같은 키를 재사용** 하고 있습니다 (학습 단순화를
-> 위한 선택). 실무에서는 키 계층을 분리하는 편이 안전합니다 — 예를 들어 이미지 키가
-> 유출되어도 메타데이터는 보호되도록 분리할 수 있습니다.
+> 키 계층·회전·폐기의 상세는 [Key Management](KEY_MANAGEMENT.md) 를 참고해 주세요.
 
 ---
 

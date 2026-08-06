@@ -46,16 +46,23 @@ Stage 1 과 Stage 2 는 같은 `verify_image()` (`shared/src/verify.c`) 를 재�
 │ Stage 2 — 재귀적 verifier (verifier 2)                       │
 │   1. Reset_Handler → clock / UART / LED 준비                 │
 │   2. metadata_read_active() — 이중 메타데이터 읽기           │
-│      - magic + RSA-2048 서명 검증                            │
+│      - magic + RSA-2048 서명 검증 (root 키)                  │
 │      - 둘 다 valid 면 큰 sequence_number 채택                │
 │      - 둘 다 invalid 면 halt (fail-safe)                     │
-│   3. App A/B 의 version 을 읽고 min_acceptable_version 과 비교│
-│   4. 우선순위 결정 (높은 version 이 primary, 나머지가 secondary)│
-│   5. primary 시도:                                            │
+│   3. keycert_load() — 키 인증서를 root 키로 검증              │
+│      - 실패 시 halt (fail-safe)                              │
+│      - key_version < min_key_version 이면 REVOKED → halt     │
+│      - 통과 시 release public modulus 를 꺼냄                 │
+│   4. App A/B 의 version 을 읽고 min_acceptable_version 과 비교│
+│   5. 우선순위 결정 (높은 version 이 primary, 나머지가 secondary)│
+│   6. primary 시도:                                            │
 │      - version < min 이면 REJECTED (downgrade 시도)          │
-│      - 통과 시 verify_image(primary, ...) → 점프              │
-│   6. 실패하면 secondary 로 fallback (같은 검사)               │
-│   7. 둘 다 실패하면 halt                                     │
+│      - verify_image() 를 release 키로 2회 독립 실행           │
+│      - 두 판정이 다르면 거부 / 서명 판정 실패면 거부           │
+│      - 두 측정값이 다르거나 정책의 측정값과 다르면 거부        │
+│      - 모두 통과 시 jump_to_image() → 점프 직전 재판정        │
+│   7. 실패하면 secondary 로 fallback (같은 검사)               │
+│   8. 둘 다 실패하면 halt                                     │
 └────────────────────────────────────────────────────────────┘
                           │ 검증 통과
                           ▼
@@ -75,8 +82,9 @@ Stage 1 과 Stage 2 는 같은 `verify_image()` (`shared/src/verify.c`) 를 재�
 | **Stage 2** | `0x60008000` ~ `0x60047FFF` | 256 KB | 재귀적 verifier 2 (서명된 이미지) |
 | **App A** | `0x60048000` ~ `0x60087FFF` | 256 KB | 응용 슬롯 A (서명, version 필드 포함) |
 | **App B** | `0x60088000` ~ `0x600C7FFF` | 256 KB | 응용 슬롯 B (서명, version 필드 포함) |
-| **Metadata Primary** | `0x600C8000` ~ `0x600C8FFF` | 4 KB | 정책 (magic + seq + min_ver + RSA-2048 서명) |
+| **Metadata Primary** | `0x600C8000` ~ `0x600C8FFF` | 4 KB | 정책 (magic + seq + min_ver + min_key_ver + App 측정값 2개 + RSA-2048 서명) |
 | **Metadata Backup** | `0x600C9000` ~ `0x600C9FFF` | 4 KB | Primary 의 안전망 (같은 형식) |
+| **Key Certificate** | `0x600CA000` ~ `0x600CAFFF` | 4 KB | release 공개키 + key_id/key_version + **root 서명** |
 
 실행 시 RAM 사용입니다.
 
@@ -110,14 +118,38 @@ Stage 1 과 Stage 2 는 같은 `verify_image()` (`shared/src/verify.c`) 를 재�
 ┌──────────────────────────────────────────────────────────────┐
 │ [0x00] magic = 0x5EC8B007 ("SECBOOT" 비트변형)                │
 │ [0x04] sequence_number (uint32 LE) — atomic switch 발행 번호  │
-│ [0x08] min_acceptable_version (uint32 LE) — anti-rollback 정책│
-│ [0x0C..0x1F] reserved (0xFF, SHA-256 입력에 포함)             │
-│ [0x20..0x11F] RSA-2048 signature (256 byte)                  │
-│   = PKCS#1 v1.5 ( SHA-256( [0x00..0x1F] ), private_key )     │
-│ [0x120..0xFFF] reserved (0xFF)                               │
+│ [0x08] min_acceptable_version (uint32 LE) — 이미지 rollback   │
+│ [0x0C] min_key_version (uint32 LE) — 키 폐기 기준             │
+│ [0x10..0x2F] app_a_digest — SHA-256(App A code)              │
+│ [0x30..0x4F] app_b_digest — SHA-256(App B code)              │
+│ [0x50..0x5F] reserved                                        │
+│ [0x60..0x15F] RSA-2048 signature (256 byte)                  │
+│   = PKCS#1 v1.5 ( SHA-256([0x00..0x5F]), root_private_key )  │
+│ [0x160..0xFFF] reserved (0xFF)                               │
 └──────────────────────────────────────────────────────────────┘
 4 KB (flash sector 1개)
 ```
+
+## 키 인증서 sector 레이아웃
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│ [0x000] magic = 0x4B435254 ("KCRT")                          │
+│ [0x004] key_id (uint32 LE)                                   │
+│ [0x008] key_version (uint32 LE) — 폐기 기준                   │
+│ [0x00C] reserved0                                            │
+│ [0x010..0x10F] release public modulus (256 byte, big-endian) │
+│ [0x110..0x1FF] reserved                                      │
+│ [0x200..0x2FF] root signature (256 byte)                     │
+│   = PKCS#1 v1.5 ( SHA-256([0x000..0x1FF]), root_private_key )│
+│ [0x300..0xFFF] reserved (0xFF)                               │
+└──────────────────────────────────────────────────────────────┘
+4 KB (flash sector 1개)
+```
+
+release 공개키를 코드에 박지 않고 데이터로 두되 root 서명으로 봉인합니다. 키를 교체할 때
+이 sector 하나만 다시 쓰면 되고 Stage 1 은 건드리지 않습니다. 자세한 내용은
+[Key Management](KEY_MANAGEMENT.md) 를 참고해 주세요.
 
 - **Atomic switch**: 업데이트 시 현재 active 가 아닌 쪽에 새 메타데이터를 씁니다. 쓰기가 끝나면 큰 `seq` 쪽이 자연스럽게 active 가 됩니다. 도중에 전원이 끊겨도 손대지 않은 쪽이 안전망 역할을 합니다.
 - **RSA 서명**: SHA 만 박아 두면 공격자가 메타데이터를 위조한 뒤 SHA 도 다시 계산할 수 있습니다. PKCS#1 v1.5 RSA-2048 로 봉인하면 private key 없이는 어떤 변조도 통하지 않습니다.
@@ -132,7 +164,9 @@ Stage 1 과 Stage 2 는 같은 `verify_image()` (`shared/src/verify.c`) 를 재�
 5. **A/B 파티션** — 무중단 업데이트와 한쪽 손상 시의 fallback 을 함께 제공합니다. 우선순위는 version 으로 결정합니다.
 6. **Anti-rollback** — 메타데이터 sector 의 `min_acceptable_version` 으로 downgrade 시도를 차단합니다.
 7. **이중 메타데이터 + RSA 서명** — atomic switch (전원 끊김에 의한 영구 불능 방지) 와 완전한 무결성 (변조 차단) 을 함께 보장합니다.
-8. **이미지 서명 키 재사용** — 메타데이터 서명에도 같은 키를 씁니다. 학습 단순화를 위한 선택이며, 실무에서는 key hierarchy 를 분리하는 편이 안전합니다.
+8. **키 계층 분리** — root 키는 Stage 2 이미지와 정책, 키 인증서를 서명하고 거의 꺼내지 않습니다. release 키는 App 만 서명하며 인증서 재발급으로 교체할 수 있습니다. 가장 바꿀 수 없는 키를 가장 자주 쓰지 않게 만드는 배치입니다.
+9. **판정 결과를 토큰으로** — 검증 결과를 `int` 0/1 로 나르면 두 값의 hamming distance 가 1 이라 글리치 한 번에 뒤집힙니다. 거리 32 의 상수 두 개로 표현하고, 기본값을 실패로 두며, 판정을 서로 떨어진 두 지점에서 확인합니다.
+10. **정책과 이미지의 바인딩** — 정책 서명이 App 의 SHA-256 측정값까지 덮습니다. 각 부품이 진짜여도 세대가 어긋난 조합은 거부됩니다.
 
 ## 소프트웨어 사슬의 한계 — Hardware Root of Trust 가 필요한 이유
 
@@ -176,4 +210,12 @@ monotonic 을 100% 보장할 수 없고, 보장 장치를 또 다른 SW 에 두�
 까지 구현했습니다. 마지막 계층인 메타데이터 anti-rollback 은 하드웨어가 함께 들어가야
 완성됩니다.
 
-자세한 신뢰 사슬 동작은 [Trust Chain](TRUST_CHAIN.md) 을 참고해 주세요.
+하드웨어를 도입했을 때 이 두 계층이 어떻게 닫히는지는
+[HAB and OTP](HAB_AND_OTP.md) 에서 설계 수준으로 다룹니다. 퓨즈는 굽지 않습니다.
+
+---
+
+자세한 신뢰 사슬 동작은 [Trust Chain](TRUST_CHAIN.md), 공격자 모델과 위협 목록은
+[Threat Model](THREAT_MODEL.md), fault injection 하드닝의 before/after 증거는
+[Fault Injection](FAULT_INJECTION.md), 키 계층과 폐기는
+[Key Management](KEY_MANAGEMENT.md) 를 참고해 주세요.

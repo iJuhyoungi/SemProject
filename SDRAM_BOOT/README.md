@@ -1,5 +1,14 @@
 # i.MX RT1020 Bare-Metal Project
 
+> **초기 학습 단계의 스냅샷 (3/5) — XIP → SDRAM 부팅 시점**
+>
+> 이 폴더는 하나의 베어메탈 프로젝트가 커져 온 기록 중 한 시점입니다.
+> 다섯 폴더 `UART` → `SDRAM` → `SDRAM_BOOT` → `SDRAM_CACHE` → `SDRAM_DMA` 가 같은 프로젝트의 연속된 단계이며, 그래서 아래 본문도 동일합니다.
+>
+> **이 시점에 새로 된 것** — flash 에서 실행되던 코드를 SDRAM 으로 옮겨 실행합니다. UART 로 `XIP to SDRAM Boot Success!` 가 찍히면 성공입니다
+>
+> 저장소 전체 지도는 [최상위 README](../README.md) 를 참고해 주세요.
+
 이 프로젝트는 i.MX RT1020(Cortex-M7) MCU를 대상으로 하는 bare-metal 템플릿입니다.  
 목표는 벤더 HAL이나 MCUXpresso SDK 없이, 레지스터 수준에서 직접 MCU 기능을 추가하는 기반을 제공하는 것입니다.
 
